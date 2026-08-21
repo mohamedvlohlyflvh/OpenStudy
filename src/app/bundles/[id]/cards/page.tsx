@@ -1,0 +1,521 @@
+"use client";
+
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  GalleryHorizontalEnd,
+  Search,
+  ArrowLeft,
+  Layers,
+  Upload,
+  Download,
+} from "lucide-react";
+import { Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
+import { RevealHeading } from "@/components/reveal-heading";
+import { TagInput } from "@/components/tag-input";
+import {
+  getBundleCards,
+  createBundleFlashcard,
+  updateFlashcard,
+  deleteFlashcard,
+  getBundles,
+  importCardsIntoBundle,
+  exportBundle,
+} from "@/app/actions";
+import { parseCardsFile } from "@/lib/parsers/cards";
+import { cn } from "@/lib/utils";
+
+type CardStatus = { label: string; dot: string };
+
+function getCardStatus(card: { reviewCount: number; nextReview: Date | string }): CardStatus {
+  const rc = card.reviewCount;
+  const isDue = new Date(card.nextReview).getTime() <= Date.now();
+  if (rc === 0) return { label: "NEW", dot: "bg-gray-400" };
+  if (isDue) return { label: "DUE", dot: "bg-danger" };
+  if (rc <= 3) return { label: "LEARNING", dot: "bg-warning" };
+  return { label: "MATURE", dot: "bg-success" };
+}
+
+type CardTag = { tag: { id: string; name: string } };
+
+type Card = {
+  id: string;
+  front: string;
+  back: string;
+  reviewCount: number;
+  nextReview: Date | string;
+  tags: CardTag[];
+};
+
+export default function BundleCardsPage() {
+  const params = useParams<{ id: string }>();
+  const bundleId = params.id;
+  const router = useRouter();
+
+  const [bundleName, setBundleName] = useState<string>("");
+  const [bundleColor, setBundleColor] = useState<string>("#DFE104");
+  const [cards, setCards] = useState<Card[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterTag, setFilterTag] = useState("all");
+  const [flippedIds, setFlippedIds] = useState<Set<string>>(new Set());
+
+  // Create modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [front, setFront] = useState("");
+  const [back, setBack] = useState("");
+  const [createTags, setCreateTags] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+
+  // Edit/Delete
+  const [editCard, setEditCard] = useState<Card | null>(null);
+  const [editFront, setEditFront] = useState("");
+  const [editBack, setEditBack] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Card | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Import
+  const [importing, setImporting] = useState(false);
+
+  const load = useCallback(async () => {
+    const [bundleCards, bundles] = await Promise.all([
+      getBundleCards(bundleId),
+      getBundles(),
+    ]);
+    setCards(bundleCards as unknown as Card[]);
+    const b = bundles.find((x) => x.id === bundleId);
+    if (b) {
+      setBundleName(b.name);
+      setBundleColor(b.color || "#DFE104");
+    }
+    setLoaded(true);
+  }, [bundleId]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      await load();
+      if (!active) return;
+    })();
+    return () => {
+      active = false;
+    };
+  }, [load]);
+
+  // Distinct tag names across this bundle's cards
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    cards.forEach((c) => c.tags.forEach((t) => set.add(t.tag.name)));
+    return Array.from(set).sort();
+  }, [cards]);
+
+  const filteredCards = useMemo(() => {
+    return cards.filter((card) => {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        !q ||
+        card.front.toLowerCase().includes(q) ||
+        card.back.toLowerCase().includes(q);
+      const matchesTag =
+        filterTag === "all" || card.tags.some((t) => t.tag.name === filterTag);
+      return matchesSearch && matchesTag;
+    });
+  }, [cards, searchQuery, filterTag]);
+
+  const toggleFlip = (id: string) => {
+    setFlippedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCreate = async () => {
+    if (!front.trim() || !back.trim()) return;
+    setCreating(true);
+    try {
+      await createBundleFlashcard({
+        bundleId,
+        front: front.trim(),
+        back: back.trim(),
+        tags: createTags.length ? createTags : undefined,
+      });
+      setCreateOpen(false);
+      setFront("");
+      setBack("");
+      setCreateTags([]);
+      setLoaded(false);
+      await load();
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleEditSave = async () => {
+    if (!editCard || !editFront.trim() || !editBack.trim()) return;
+    setSaving(true);
+    try {
+      await updateFlashcard(editCard.id, {
+        front: editFront.trim(),
+        back: editBack.trim(),
+        tags: editTags,
+      });
+      setEditCard(null);
+      setLoaded(false);
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteFlashcard(deleteTarget.id);
+      setDeleteTarget(null);
+      setLoaded(false);
+      await load();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleImport = async (file: File) => {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const parsed = parseCardsFile(text);
+      if (!parsed.length) {
+        alert("NO VALID CARDS FOUND IN FILE");
+        return;
+      }
+      const res = await importCardsIntoBundle(bundleId, parsed);
+      alert(`IMPORTED ${res.count} CARDS`);
+      setLoaded(false);
+      await load();
+    } catch (e) {
+      console.error(e);
+      alert("IMPORT FAILED: INVALID FILE");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-bg px-4 py-10 sm:px-8">
+      <div className="mx-auto max-w-6xl">
+        {/* Header */}
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push("/bundles")}
+              className="flex h-10 w-10 items-center justify-center border-2 border-border text-muted-fg transition-colors hover:border-fg hover:text-fg"
+              aria-label="Back to bundles"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-3 w-3 rounded-sm"
+                  style={{ backgroundColor: bundleColor }}
+                />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+                  Manage cards
+                </p>
+              </div>
+              <RevealHeading
+                text={bundleName || "BUNDLE"}
+                className="text-2xl font-bold uppercase tracking-tight text-fg"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  const json = await exportBundle(bundleId);
+                  const blob = new Blob([json], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  const rawName = bundleName || "bundle";
+                  const safeName = rawName.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "bundle";
+                  a.href = url;
+                  a.download = `${safeName}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                } catch (e) {
+                  console.error("Export failed", e);
+                  alert("EXPORT FAILED — SEE CONSOLE");
+                }
+              }}
+              className="flex h-10 items-center gap-2 border-2 border-border px-3 text-xs font-bold uppercase tracking-widest text-muted-fg transition-colors hover:border-fg hover:text-fg"
+            >
+              <Download size={14} />
+              EXPORT
+            </button>
+            <button
+              onClick={() => document.getElementById("csv-import")?.click()}
+              disabled={importing}
+              className="flex h-10 items-center gap-2 border-2 border-border px-3 text-xs font-bold uppercase tracking-widest text-muted-fg transition-colors hover:border-fg hover:text-fg disabled:opacity-50"
+            >
+              <Upload size={14} />
+              {importing ? "IMPORTING..." : "IMPORT CSV"}
+            </button>
+            <input
+              id="csv-import"
+              type="file"
+              accept=".csv,.tsv,.txt,.json,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImport(f);
+                e.target.value = "";
+              }}
+            />
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus size={16} />
+              Add card
+            </Button>
+          </div>
+        </div>
+
+        {/* Search + Tag filter */}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-fg"
+            />
+            <input
+              placeholder="SEARCH CARDS..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+            />
+          </div>
+          <select
+            value={filterTag}
+            onChange={(e) => setFilterTag(e.target.value)}
+            aria-label="Filter cards by tag"
+            className="h-10 border-2 border-border bg-bg px-3 text-xs font-bold uppercase tracking-widest text-fg focus:border-accent focus:outline-none"
+          >
+            <option value="all" className="bg-bg text-fg">
+              ALL TAGS
+            </option>
+            {allTags.map((t) => (
+              <option key={t} value={t} className="bg-bg text-fg">
+                {t.toUpperCase()}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Cards grid */}
+        {!loaded ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-[200px] w-full" />
+            ))}
+          </div>
+        ) : filteredCards.length === 0 ? (
+          <EmptyState
+            icon={<GalleryHorizontalEnd size={48} />}
+            title={cards.length === 0 ? "NO CARDS YET" : "NO CARDS FOUND"}
+            description={
+              cards.length === 0
+                ? "ADD YOUR FIRST FLASHCARD TO THIS BUNDLE."
+                : "TRY A DIFFERENT SEARCH OR FILTER."
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredCards.map((card) => {
+              const flipped = flippedIds.has(card.id);
+              const status = getCardStatus(card);
+              return (
+                <div
+                  key={card.id}
+                  className={cn(
+                    "group relative flex min-h-[200px] flex-col border-2 p-5 transition-all duration-200",
+                    flipped
+                      ? "border-accent bg-accent text-accent-fg"
+                      : "border-border bg-bg hover:border-fg"
+                  )}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn("h-2 w-2 rounded-full", status.dot)}
+                      />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+                        {status.label}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          setEditCard(card);
+                          setEditFront(card.front);
+                          setEditBack(card.back);
+                          setEditTags(card.tags.map((t) => t.tag.name));
+                        }}
+                        aria-label="Edit"
+                        className="p-1.5 text-muted-fg transition-colors hover:bg-accent hover:text-accent-fg"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(card)}
+                        aria-label="Delete"
+                        className="p-1.5 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    className="flex flex-1 cursor-pointer items-center justify-center text-center"
+                    onClick={() => toggleFlip(card.id)}
+                  >
+                    <div>
+                      <span
+                        className={cn(
+                          "mb-2 inline-block text-[10px] font-bold uppercase tracking-widest",
+                          flipped ? "text-accent-fg/70" : "text-muted-fg"
+                        )}
+                      >
+                        {flipped ? "ANSWER" : "QUESTION"}
+                      </span>
+                      <p className="text-lg font-bold uppercase tracking-tight leading-relaxed">
+                        {flipped ? card.back : card.front}
+                      </p>
+                    </div>
+                  </div>
+                  {card.tags.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {card.tags.map((t) => (
+                        <span
+                          key={t.tag.id}
+                          className="bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg"
+                        >
+                          {t.tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-center text-[10px] uppercase tracking-widest text-muted-fg">
+                    CLICK TO FLIP • {card.reviewCount} REVIEWS
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Create Modal */}
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="NEW CARD">
+        <div className="space-y-6">
+          <Input
+            label="QUESTION (FRONT)"
+            placeholder="E.G. WHAT IS SM-2?"
+            value={front}
+            onChange={(e) => setFront(e.target.value)}
+          />
+          <Input
+            label="ANSWER (BACK)"
+            placeholder="E.G. A SPACED REPETITION ALGORITHM."
+            value={back}
+            onChange={(e) => setBack(e.target.value)}
+          />
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+              TAGS
+            </label>
+            <TagInput tags={createTags} onChange={setCreateTags} />
+          </div>
+          <div className="flex justify-end gap-4 pt-4">
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+              CANCEL
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !front.trim() || !back.trim()}
+            >
+              {creating ? "CREATING..." : "CREATE"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal open={!!editCard} onClose={() => setEditCard(null)} title="EDIT CARD">
+        {editCard && (
+          <div className="space-y-6">
+            <Input
+              label="QUESTION (FRONT)"
+              value={editFront}
+              onChange={(e) => setEditFront(e.target.value)}
+            />
+            <Input
+              label="ANSWER (BACK)"
+              value={editBack}
+              onChange={(e) => setEditBack(e.target.value)}
+            />
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+                TAGS
+              </label>
+              <TagInput tags={editTags} onChange={setEditTags} />
+            </div>
+            <div className="flex justify-end gap-4 pt-4">
+              <Button variant="ghost" onClick={() => setEditCard(null)}>
+                CANCEL
+              </Button>
+              <Button
+                onClick={handleEditSave}
+                disabled={saving || !editFront.trim() || !editBack.trim()}
+              >
+                {saving ? "SAVING..." : "SAVE"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Delete Confirmation */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="DELETE CARD"
+      >
+        {deleteTarget && (
+          <div className="space-y-6">
+            <p className="text-sm text-muted-fg">
+              DELETE THIS CARD? THIS CANNOT BE UNDONE.
+            </p>
+            <div className="flex justify-end gap-4 pt-2">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+                CANCEL
+              </Button>
+              <Button variant="danger" onClick={handleDelete} disabled={deleting}>
+                DELETE
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </main>
+  );
+}

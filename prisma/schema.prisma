@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── Subjects & Topics ────────────────────────────────────────────
+model Subject {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String    @default("#3B82F6")
+  icon        String    @default("book-open")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  topics      Topic[]
+  studySessions StudySession[]
+  flashcards  Flashcard[]
+
+  @@map("subjects")
+}
+
+model Topic {
+  id          String    @id @default(cuid())
+  subjectId   String
+  name        String
+  description String?
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  resources   Resource[]
+  notes       Note[]
+  studySessions StudySession[]
+  flashcards  Flashcard[]
+
+  @@index([subjectId])
+  @@map("topics")
+}
+
+// ─── Resources ────────────────────────────────────────────────────
+model Resource {
+  id        String   @id @default(cuid())
+  topicId   String
+  title     String
+  url       String?
+  type      String   @default("link") // link, video, book, pdf
+  notes     String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@map("resources")
+}
+
+// ─── Notes ────────────────────────────────────────────────────────
+model Note {
+  id        String   @id @default(cuid())
+  topicId   String
+  title     String
+  content   String   @default("")
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  tags      NoteTag[]
+
+  @@index([topicId])
+  @@map("notes")
+}
+
+// ─── Tags ─────────────────────────────────────────────────────────
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+
+  notes NoteTag[]
+  cards CardTag[]
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+  @@map("note_tags")
+}
+
+model CardTag {
+  cardId String
+  tagId  String
+
+  card Flashcard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  tag  Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, tagId])
+  @@map("card_tags")
+}
+
+// ─── Bundles (Flashcard Decks) ───────────────────────────────────
+model Bundle {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  color       String   @default("#DFE104")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  flashcards  Flashcard[]
+
+  @@map("bundles")
+}
+
+// ─── Flashcards (Spaced Repetition) ──────────────────────────────
+model Flashcard {
+  id               String   @id @default(cuid())
+  topicId          String?
+  subjectId        String?
+  bundleId         String?
+  front            String
+  back             String
+  difficulty       Int      @default(1)
+  easeFactor       Float    @default(2.5)
+  intervalDays     Int      @default(0)
+  nextReview       DateTime @default(now())
+  lastReview       DateTime?
+  reviewCount      Int      @default(0)
+  consecutiveAgain Int      @default(0) // leech protection: resets on success
+  isLeech          Boolean  @default(false) // flagged after 5 consecutive Again
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  topic            Topic?   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  subject          Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  bundle           Bundle?  @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+  reviewLogs       ReviewLog[]
+  tags             CardTag[]
+
+  @@index([topicId])
+  @@index([bundleId])
+  @@index([nextReview])
+  @@map("flashcards")
+}
+
+// ─── Review Log (for Heatmap / Streak) ───────────────────────────
+model ReviewLog {
+  id         String   @id @default(cuid())
+  flashcardId String
+  quality    Int      // 0=Again, 2=Hard, 3=Good, 5=Easy
+  reviewedAt DateTime @default(now())
+
+  flashcard  Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+
+  @@index([reviewedAt])
+  @@index([flashcardId])
+  @@map("review_logs")
+}
+
+// ─── Study Sessions ───────────────────────────────────────────────
+model StudySession {
+  id          String   @id @default(cuid())
+  subjectId   String?
+  topicId     String?
+  title       String
+  durationMin Int      @default(0)
+  notes       String?
+  completed   Boolean  @default(false)
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+
+  subject     Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topic       Topic?   @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@index([startedAt])
+  @@map("study_sessions")
+}

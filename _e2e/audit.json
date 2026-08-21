@@ -1,0 +1,684 @@
+[
+  {
+    "page": "dashboard",
+    "theme": "onyx",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.53,
+        "fg": "rgb(255, 255, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.53,
+        "fg": "rgb(255, 255, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.53,
+        "fg": "rgb(255, 255, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.53,
+        "fg": "rgb(255, 255, 255)",
+        "fs": 16
+      },
+      {
+        "text": "STUDY ALL DUE",
+        "ratio": 1.53,
+        "fg": "rgb(255, 255, 255)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "onyx",
+    "issue": "OVERFLOW",
+    "items": [
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 1769,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "mx-8 flex items-center gap-4",
+        "right": 1737,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-4xl font-bold uppercase tracking-tighter lg:text-6xl",
+        "right": 1635,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-xs font-bold uppercase tracking-widest text-muted-fg",
+        "right": 1737,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 3326,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-child",
+        "right": 1994,
+        "vw": 1440
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "void",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.05,
+        "fg": "rgb(231, 236, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.05,
+        "fg": "rgb(231, 236, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.05,
+        "fg": "rgb(231, 236, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.05,
+        "fg": "rgb(231, 236, 255)",
+        "fs": 16
+      },
+      {
+        "text": "STUDY ALL DUE",
+        "ratio": 2.05,
+        "fg": "rgb(231, 236, 255)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "void",
+    "issue": "OVERFLOW",
+    "items": [
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 1755,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "mx-8 flex items-center gap-4",
+        "right": 1723,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-4xl font-bold uppercase tracking-tighter lg:text-6xl",
+        "right": 1621,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-xs font-bold uppercase tracking-widest text-muted-fg",
+        "right": 1723,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 3312,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-child",
+        "right": 1980,
+        "vw": 1440
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "emerald",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.83,
+        "fg": "rgb(231, 255, 244)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.83,
+        "fg": "rgb(231, 255, 244)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.83,
+        "fg": "rgb(231, 255, 244)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 1.83,
+        "fg": "rgb(231, 255, 244)",
+        "fs": 16
+      },
+      {
+        "text": "STUDY ALL DUE",
+        "ratio": 1.83,
+        "fg": "rgb(231, 255, 244)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "emerald",
+    "issue": "OVERFLOW",
+    "items": [
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 1741,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "mx-8 flex items-center gap-4",
+        "right": 1709,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-4xl font-bold uppercase tracking-tighter lg:text-6xl",
+        "right": 1607,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-xs font-bold uppercase tracking-widest text-muted-fg",
+        "right": 1709,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 3298,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-child",
+        "right": 1966,
+        "vw": 1440
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "magma",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.31,
+        "fg": "rgb(255, 233, 227)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.31,
+        "fg": "rgb(255, 233, 227)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.31,
+        "fg": "rgb(255, 233, 227)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.31,
+        "fg": "rgb(255, 233, 227)",
+        "fs": 16
+      },
+      {
+        "text": "STUDY ALL DUE",
+        "ratio": 2.31,
+        "fg": "rgb(255, 233, 227)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "magma",
+    "issue": "OVERFLOW",
+    "items": [
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 1728,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "mx-8 flex items-center gap-4",
+        "right": 1696,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-4xl font-bold uppercase tracking-tighter lg:text-6xl",
+        "right": 1594,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-xs font-bold uppercase tracking-widest text-muted-fg",
+        "right": 1696,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 3285,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-child",
+        "right": 1953,
+        "vw": 1440
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "grape",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.25,
+        "fg": "rgb(243, 233, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.25,
+        "fg": "rgb(243, 233, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.25,
+        "fg": "rgb(243, 233, 255)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.25,
+        "fg": "rgb(243, 233, 255)",
+        "fs": 16
+      },
+      {
+        "text": "STUDY ALL DUE",
+        "ratio": 2.25,
+        "fg": "rgb(243, 233, 255)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "grape",
+    "issue": "OVERFLOW",
+    "items": [
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 1714,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "mx-8 flex items-center gap-4",
+        "right": 1682,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-4xl font-bold uppercase tracking-tighter lg:text-6xl",
+        "right": 1580,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-xs font-bold uppercase tracking-widest text-muted-fg",
+        "right": 1682,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 3271,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-child",
+        "right": 1939,
+        "vw": 1440
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "light",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.9,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.9,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.9,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "16 FLASHCARDS DUE\n\nKEEP YOUR S",
+        "ratio": 2.9,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "STUDY ALL DUE",
+        "ratio": 2.9,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "16\n\nDUE",
+        "ratio": 2.16,
+        "fg": "rgb(100, 96, 103)",
+        "fs": 16
+      },
+      {
+        "text": "16",
+        "ratio": 2.16,
+        "fg": "rgb(100, 96, 103)",
+        "fs": 72
+      },
+      {
+        "text": "DUE",
+        "ratio": 2.71,
+        "fg": "rgb(82, 82, 91)",
+        "fs": 12
+      }
+    ]
+  },
+  {
+    "page": "dashboard",
+    "theme": "light",
+    "issue": "OVERFLOW",
+    "items": [
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 1701,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "mx-8 flex items-center gap-4",
+        "right": 1669,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-4xl font-bold uppercase tracking-tighter lg:text-6xl",
+        "right": 1567,
+        "vw": 1440
+      },
+      {
+        "tag": "SPAN",
+        "cls": "text-xs font-bold uppercase tracking-widest text-muted-fg",
+        "right": 1669,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-marquee",
+        "right": 3258,
+        "vw": 1440
+      },
+      {
+        "tag": "DIV",
+        "cls": "rfm-child",
+        "right": 1926,
+        "vw": 1440
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "onyx",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.1,
+        "fg": "rgb(255, 255, 255)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "onyx",
+    "issue": "INVISIBLE TEXT",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.1
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "void",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.07,
+        "fg": "rgb(231, 236, 255)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "void",
+    "issue": "INVISIBLE TEXT",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.07
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "emerald",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.05,
+        "fg": "rgb(231, 255, 244)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "emerald",
+    "issue": "INVISIBLE TEXT",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.05
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "magma",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.06,
+        "fg": "rgb(255, 233, 227)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "magma",
+    "issue": "INVISIBLE TEXT",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.06
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "grape",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.07,
+        "fg": "rgb(243, 233, 255)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "grape",
+    "issue": "INVISIBLE TEXT",
+    "items": [
+      {
+        "text": "LIGHT",
+        "ratio": 1.07
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "light",
+    "issue": "LOW CONTRAST",
+    "items": [
+      {
+        "text": "ONYX",
+        "ratio": 1.1,
+        "fg": "rgb(255, 255, 255)",
+        "fs": 12
+      },
+      {
+        "text": "VOID",
+        "ratio": 1.02,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "EMERALD",
+        "ratio": 1.02,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "MAGMA",
+        "ratio": 1,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      },
+      {
+        "text": "GRAPE",
+        "ratio": 1,
+        "fg": "rgb(9, 9, 11)",
+        "fs": 16
+      }
+    ]
+  },
+  {
+    "page": "settings",
+    "theme": "light",
+    "issue": "INVISIBLE TEXT",
+    "items": [
+      {
+        "text": "ONYX",
+        "ratio": 1.1
+      },
+      {
+        "text": "VOID",
+        "ratio": 1.02
+      },
+      {
+        "text": "EMERALD",
+        "ratio": 1.02
+      },
+      {
+        "text": "MAGMA",
+        "ratio": 1
+      },
+      {
+        "text": "GRAPE",
+        "ratio": 1
+      }
+    ]
+  }
+]

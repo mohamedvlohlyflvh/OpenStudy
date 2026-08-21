@@ -1,0 +1,25 @@
+"use client";
+
+import { useEffect } from "react";
+import { useAppStore } from "@/lib/store";
+
+// Applies persisted UI prefs to <html> so they affect global CSS.
+// Also hydrates the store from localStorage post-mount — reading storage at
+// module scope would make the first client render differ from SSR and break
+// hydration (which in turn re-triggered the script-tag warning in RootLayout).
+export function ThemeEffects() {
+  const reducedMotion = useAppStore((s) => s.reducedMotion);
+  const hydrateFromStorage = useAppStore((s) => s.hydrateFromStorage);
+
+  useEffect(() => {
+    hydrateFromStorage();
+  }, [hydrateFromStorage]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (reducedMotion) root.setAttribute("data-reduced-motion", "true");
+    else root.removeAttribute("data-reduced-motion");
+  }, [reducedMotion]);
+
+  return null;
+}
