@@ -1,5 +1,156 @@
 import Dexie, { type Table } from "dexie";
 
+// ─── Record types (mirror the previous Prisma models 1:1) ───────
+export interface SubjectRec {
+  id: string;
+  name: string;
+  description?: string | null;
+  color: string;
+  icon: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TopicRec {
+  id: string;
+  subjectId: string;
+  name: string;
+  description?: string | null;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ResourceRec {
+  id: string;
+  topicId: string;
+  title: string;
+  url?: string | null;
+  type: string;
+  notes?: string | null;
+  isRead: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NoteRec {
+  id: string;
+  topicId: string;
+  title: string;
+  content: string;
+  isPinned: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TagRec {
+  id: string;
+  name: string;
+}
+
+export interface NoteTagRec {
+  noteId: string;
+  tagId: string;
+}
+
+export interface CardTagRec {
+  cardId: string;
+  tagId: string;
+}
+
+export interface BundleRec {
+  id: string;
+  name: string;
+  description?: string | null;
+  color: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FlashcardRec {
+  id: string;
+  topicId?: string | null;
+  subjectId?: string | null;
+  bundleId?: string | null;
+  front: string;
+  back: string;
+  difficulty: number;
+  easeFactor: number;
+  intervalDays: number;
+  nextReview: Date;
+  lastReview?: Date | null;
+  reviewCount: number;
+  consecutiveAgain: number;
+  isLeech: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ReviewLogRec {
+  id: string;
+  flashcardId: string;
+  quality: number;
+  reviewedAt: Date;
+}
+
+export interface StudySessionRec {
+  id: string;
+  subjectId?: string | null;
+  topicId?: string | null;
+  title: string;
+  durationMin: number;
+  notes?: string | null;
+  completed: boolean;
+  startedAt: Date;
+  endedAt?: Date | null;
+}
+
+// ─── The database ────────────────────────────────────────────────
+// Dexie/IndexedDB is the SINGLE source of truth — fully local,
+// fully offline, per-device. No server database anywhere.
+class StudyMaxDB extends Dexie {
+  subjects!: Table<SubjectRec, string>;
+  topics!: Table<TopicRec, string>;
+  resources!: Table<ResourceRec, string>;
+  notes!: Table<NoteRec, string>;
+  tags!: Table<TagRec, string>;
+  noteTags!: Table<NoteTagRec, [string, string]>;
+  cardTags!: Table<CardTagRec, [string, string]>;
+  bundles!: Table<BundleRec, string>;
+  flashcards!: Table<FlashcardRec, string>;
+  reviewLogs!: Table<ReviewLogRec, string>;
+  studySessions!: Table<StudySessionRec, string>;
+
+  constructor() {
+    super("studymax");
+    this.version(1).stores({
+      subjects: "id, name, createdAt",
+      topics: "id, subjectId, createdAt",
+      resources: "id, topicId",
+      notes: "id, topicId, updatedAt, isPinned",
+      tags: "id, &name",
+      noteTags: "[noteId+tagId], noteId, tagId",
+      cardTags: "[cardId+tagId], cardId, tagId",
+      bundles: "id, createdAt",
+      flashcards: "id, topicId, subjectId, bundleId, nextReview, createdAt",
+      reviewLogs: "id, flashcardId, reviewedAt",
+      studySessions: "id, subjectId, startedAt",
+    });
+  }
+}
+
+export const db = new StudyMaxDB();
+
+// Unique id generator (replaces Prisma cuid defaults)
+export function uid(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+// ─── Legacy offline-cache helpers ────────────────────────────────
+// Kept for import compatibility with the flashcards page. Dexie is
+// now the primary store, so "caching" is a no-op (the data already
+// lives here) and the "cached" reads just hit the primary tables.
 export interface OfflineFlashcard {
   id: string;
   bundleId?: string | null;
@@ -8,14 +159,6 @@ export interface OfflineFlashcard {
   reviewCount: number;
   nextReview: number; // epoch ms
   isLeech: boolean;
-  synced: boolean;
-}
-
-export interface OfflineReview {
-  id?: number;
-  flashcardId: string;
-  quality: number;
-  reviewedAt: number; // epoch ms
   synced: boolean;
 }
 
@@ -28,31 +171,12 @@ export interface OfflineBundle {
   synced: boolean;
 }
 
-class StudyDB extends Dexie {
-  flashcards!: Table<OfflineFlashcard, string>;
-  reviews!: Table<OfflineReview, number>;
-  bundles!: Table<OfflineBundle, string>;
-
-  constructor() {
-    super("study-offline");
-    this.version(1).stores({
-      flashcards: "id, bundleId, nextReview, synced",
-      reviews: "++id, flashcardId, synced",
-      bundles: "id, synced",
-    });
-  }
+export async function cacheBundles(_bundles: OfflineBundle[]): Promise<void> {
+  // no-op: bundles already live in the primary store
 }
 
-export const db = new StudyDB();
-
-// ─── Offline helpers ────────────────────────────────────────────
-export async function cacheBundles(bundles: OfflineBundle[]) {
-  await db.bundles.bulkPut(bundles);
-}
-
-export async function cacheFlashcards(cards: OfflineFlashcard[]) {
-  if (cards.length === 0) return;
-  await db.flashcards.bulkPut(cards);
+export async function cacheFlashcards(_cards: OfflineFlashcard[]): Promise<void> {
+  // no-op: flashcards already live in the primary store
 }
 
 export async function getCachedBundleCards(bundleId: string) {
@@ -61,33 +185,4 @@ export async function getCachedBundleCards(bundleId: string) {
 
 export async function getCachedBundles() {
   return db.bundles.toArray();
-}
-
-export async function queueReview(flashcardId: string, quality: number) {
-  await db.reviews.add({
-    flashcardId,
-    quality,
-    reviewedAt: Date.now(),
-    synced: false,
-  });
-}
-
-export async function getPendingReviews() {
-  return db.reviews.where("synced").equals(0).toArray();
-}
-
-export async function markReviewSynced(id: number) {
-  await db.reviews.update(id, { synced: true });
-}
-
-// Apply a local review result to cached card (optimistic SM-2-lite)
-export async function applyLocalReview(flashcardId: string, quality: number) {
-  const card = await db.flashcards.get(flashcardId);
-  if (!card) return;
-  const interval = quality < 3 ? 1 : Math.min(card.reviewCount * 2 + 6, 365);
-  await db.flashcards.update(flashcardId, {
-    reviewCount: card.reviewCount + 1,
-    nextReview: Date.now() + interval * 86400000,
-    isLeech: quality < 3 ? card.isLeech : false,
-  });
 }

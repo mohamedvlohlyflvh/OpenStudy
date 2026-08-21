@@ -1,0 +1,31 @@
+[
+ {
+  "page": "flashcards",
+  "issue": "ELEMENT OVERFLOW",
+  "tag": "BUTTON",
+  "cls": "shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-wide",
+  "right": 467,
+  "vw": 390
+ },
+ {
+  "page": "flashcards",
+  "issue": "BOTTOM NAV OVERLAP",
+  "cls": "space-y-8",
+  "bottom": 813,
+  "barTop": 780
+ },
+ {
+  "page": "sessions",
+  "issue": "BOTTOM NAV OVERLAP",
+  "cls": "",
+  "bottom": 1058,
+  "barTop": 780
+ },
+ {
+  "page": "settings",
+  "issue": "BOTTOM NAV OVERLAP",
+  "cls": "",
+  "bottom": 850,
+  "barTop": 780
+ }
+]

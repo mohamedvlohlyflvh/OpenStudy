@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   BookOpen,
   Brain,
@@ -5,9 +8,7 @@ import {
   StickyNote,
   Zap,
   TrendingUp,
-  ArrowRight,
 } from "lucide-react";
-import Link from "next/link";
 import Marquee from "react-fast-marquee";
 import { Card, Badge } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
@@ -17,8 +18,37 @@ import { getDashboardStats } from "./actions";
 import { formatDuration } from "@/lib/utils";
 import { StudyAllDueButton } from "@/components/study-all-due-button";
 
-export default async function DashboardPage() {
-  const stats = await getDashboardStats();
+type DashboardStats = Awaited<ReturnType<typeof getDashboardStats>>;
+
+export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+
+  useEffect(() => {
+    getDashboardStats().then(setStats);
+  }, []);
+
+  if (!stats) {
+    return (
+      <div className="p-8 lg:p-12">
+        <div className="relative mb-16">
+          <RevealHeading text="DASHBOARD" className="text-5xl lg:text-8xl" />
+          <ScrambleSubtitle
+            text="YOUR LEARNING OVERVIEW AT A GLANCE"
+            className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex h-48 items-center justify-center border-2 border-border bg-bg">
+              <span className="text-xs font-bold uppercase tracking-widest text-muted-fg animate-pulse">
+                LOADING
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const statCards = [
     { label: "SUBJECTS", value: stats.totalSubjects, icon: <BookOpen size={20} /> },

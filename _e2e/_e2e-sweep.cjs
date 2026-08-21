@@ -7,7 +7,7 @@ const path = require("path");
 
 const BASE = "http://localhost:3000";
 const OUT = path.join(__dirname, "_e2e", "screenshots");
-const BUNDLE_ID = "cmt0vw15x000bkgv4fz4vdkbe"; // Calculus Formulas (seeded)
+const BUNDLE_ID = "cmt3fzz9v0007qgv4tyxiwh6y"; // Calculus Formulas (seeded)
 
 const THEMES = ["onyx", "void", "emerald", "magma", "grape", "light"];
 const PAGES = [

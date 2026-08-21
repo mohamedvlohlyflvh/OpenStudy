@@ -214,6 +214,10 @@ function FlashcardsContent() {
             const cached = await getCachedBundleCards(bid);
             setDueCards(cached as unknown as Flashcard[]);
           }
+        } else if (allDueParam) {
+          // Study All Due: load the due queue across every bundle
+          const cards = await getAllDueFlashcards();
+          setDueCards(cards as Flashcard[]);
         } else {
           const cards = await getAllFlashcards();
           setDueCards(cards as Flashcard[]);
@@ -665,7 +669,7 @@ function FlashcardsContent() {
 
       {/* ═══════════════ REVIEW MODE ═══════════════ */}
       {mode === "review" && (
-        !selectedBundle ? (
+        !selectedBundle && !allDue ? (
           /* Bundle overview when ALL BUNDLES is selected */
           <div className="space-y-8">
             <p className="text-sm text-muted-fg uppercase tracking-widest">

@@ -1,67 +1,153 @@
-"use server";
-
-import { revalidatePath } from "next/cache";
+// ─────────────────────────────────────────────────────────────────
+// Data layer — Dexie (IndexedDB) is the SINGLE source of truth.
+// Fully local & offline, per-device. No server database.
+// Function names/signatures mirror the old Prisma server actions so
+// every page keeps working without import changes.
+// ─────────────────────────────────────────────────────────────────
 import { z } from "zod";
-import { db } from "@/lib/prisma";
-import { subjectSchema, topicSchema, noteSchema, bundleSchema, bundleCardSchema, importBatchSchema, type SubjectInput, type TopicInput, type NoteInput } from "@/lib/validations";
+import {
+  db,
+  uid,
+  type SubjectRec,
+  type TopicRec,
+  type NoteRec,
+  type BundleRec,
+  type FlashcardRec,
+  type StudySessionRec,
+  type ReviewLogRec,
+} from "@/lib/db";
+import {
+  subjectSchema,
+  topicSchema,
+  noteSchema,
+  bundleSchema,
+  bundleCardSchema,
+  importBatchSchema,
+  type SubjectInput,
+} from "@/lib/validations";
+
+// ─── Include helpers (mirror Prisma `include` shapes) ────────────
+async function topicInclude(topicId?: string | null) {
+  if (!topicId) return null;
+  const topic = await db.topics.get(topicId);
+  if (!topic) return null;
+  const subject = topic.subjectId ? await db.subjects.get(topic.subjectId) : undefined;
+  return {
+    id: topic.id,
+    name: topic.name,
+    subject: subject ? { id: subject.id, name: subject.name, color: subject.color } : null,
+  };
+}
+
+async function bundleInclude(bundleId?: string | null) {
+  if (!bundleId) return null;
+  const bundle = await db.bundles.get(bundleId);
+  if (!bundle) return null;
+  return { id: bundle.id, name: bundle.name, color: bundle.color };
+}
+
+async function cardTagsInclude(cardId: string) {
+  const links = await db.cardTags.where("cardId").equals(cardId).toArray();
+  const out: { tag: { id: string; name: string } }[] = [];
+  for (const l of links) {
+    const tag = await db.tags.get(l.tagId);
+    if (tag) out.push({ tag: { id: tag.id, name: tag.name } });
+  }
+  return out;
+}
+
+async function noteTagsInclude(noteId: string) {
+  const links = await db.noteTags.where("noteId").equals(noteId).toArray();
+  const out: { tag: { id: string; name: string } }[] = [];
+  for (const l of links) {
+    const tag = await db.tags.get(l.tagId);
+    if (tag) out.push({ tag: { id: tag.id, name: tag.name } });
+  }
+  return out;
+}
+
+async function subjectCounts(subjectId: string) {
+  const [topics, flashcards, studySessions] = await Promise.all([
+    db.topics.where("subjectId").equals(subjectId).count(),
+    db.flashcards.where("subjectId").equals(subjectId).count(),
+    db.studySessions.where("subjectId").equals(subjectId).count(),
+  ]);
+  return { topics, flashcards, studySessions };
+}
+
+async function topicCounts(topicId: string) {
+  const [resources, notes, flashcards] = await Promise.all([
+    db.resources.where("topicId").equals(topicId).count(),
+    db.notes.where("topicId").equals(topicId).count(),
+    db.flashcards.where("topicId").equals(topicId).count(),
+  ]);
+  return { resources, notes, flashcards };
+}
+
+async function upsertTag(name: string): Promise<{ id: string; name: string }> {
+  const existing = await db.tags.where("name").equals(name).first();
+  if (existing) return existing;
+  const tag = { id: uid(), name };
+  await db.tags.add(tag);
+  return tag;
+}
 
 // ─── Subjects ─────────────────────────────────────────────────────
 export async function getSubjects() {
-  return db.subject.findMany({
-    include: {
-      _count: { select: { topics: true, flashcards: true, studySessions: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const all = await db.subjects.orderBy("createdAt").reverse().toArray();
+  return Promise.all(
+    all.map(async (s) => ({ ...s, _count: await subjectCounts(s.id) }))
+  );
 }
 
 export async function getSubject(id: string) {
-  const subject = await db.subject.findUnique({
-    where: { id },
-    include: {
-      topics: {
-        orderBy: { order: "asc" },
-        include: {
-          _count: { select: { resources: true, notes: true, flashcards: true } },
-        },
-      },
-      _count: { select: { flashcards: true, studySessions: true } },
-    },
-  });
+  const subject = await db.subjects.get(id);
   if (!subject) throw new Error("Subject not found");
-  return subject;
+  const topics = await db.topics.where("subjectId").equals(id).sortBy("order");
+  const topicsWithCounts = await Promise.all(
+    topics.map(async (t) => ({ ...t, _count: await topicCounts(t.id) }))
+  );
+  return { ...subject, topics: topicsWithCounts, _count: await subjectCounts(id) };
 }
 
 export async function createSubject(input: SubjectInput) {
   const parsed = subjectSchema.parse(input);
-  const result = await db.subject.create({ data: parsed });
-  revalidatePath("/subjects");
-  revalidatePath("/");
-  return result;
+  const now = new Date();
+  const subject: SubjectRec = { id: uid(), ...parsed, createdAt: now, updatedAt: now };
+  await db.subjects.add(subject);
+  return subject;
 }
 
 export async function updateSubject(id: string, input: Partial<SubjectInput>) {
   const parsed = subjectSchema.partial().parse(input);
-  const updated = await db.subject.update({ where: { id }, data: parsed });
-  revalidatePath("/subjects");
-  return updated;
+  await db.subjects.update(id, { ...parsed, updatedAt: new Date() });
+  return db.subjects.get(id);
 }
 
 export async function deleteSubject(id: string) {
-  const result = await db.subject.delete({ where: { id } });
-  revalidatePath("/subjects");
-  return result;
+  const subject = await db.subjects.get(id);
+  // Cascade: topics → (resources, notes, flashcards), subject's flashcards/sessions
+  const topics = await db.topics.where("subjectId").equals(id).toArray();
+  for (const t of topics) {
+    await db.resources.where("topicId").equals(t.id).delete();
+    const notes = await db.notes.where("topicId").equals(t.id).toArray();
+    for (const n of notes) await db.noteTags.where("noteId").equals(n.id).delete();
+    await db.notes.where("topicId").equals(t.id).delete();
+    const cards = await db.flashcards.where("topicId").equals(t.id).toArray();
+    for (const c of cards) await db.cardTags.where("cardId").equals(c.id).delete();
+    await db.flashcards.where("topicId").equals(t.id).delete();
+  }
+  await db.topics.where("subjectId").equals(id).delete();
+  await db.flashcards.where("subjectId").equals(id).modify({ subjectId: null });
+  await db.studySessions.where("subjectId").equals(id).modify({ subjectId: null });
+  if (subject) await db.subjects.delete(id);
+  return subject;
 }
 
 // ─── Topics ───────────────────────────────────────────────────────
 export async function getTopics(subjectId: string) {
-  return db.topic.findMany({
-    where: { subjectId },
-    orderBy: { order: "asc" },
-    include: {
-      _count: { select: { resources: true, notes: true, flashcards: true } },
-    },
-  });
+  const topics = await db.topics.where("subjectId").equals(subjectId).sortBy("order");
+  return Promise.all(topics.map(async (t) => ({ ...t, _count: await topicCounts(t.id) })));
 }
 
 export async function createTopic(data: {
@@ -71,15 +157,24 @@ export async function createTopic(data: {
   order?: number;
 }) {
   const parsed = topicSchema.parse(data);
-  const topic = await db.topic.create({ data: parsed });
-  revalidatePath("/subjects");
+  const now = new Date();
+  const topic: TopicRec = { id: uid(), ...parsed, createdAt: now, updatedAt: now };
+  await db.topics.add(topic);
   return topic;
 }
 
 export async function deleteTopic(id: string) {
-  const result = await db.topic.delete({ where: { id } });
-  revalidatePath("/subjects");
-  return result;
+  const topic = await db.topics.get(id);
+  await db.resources.where("topicId").equals(id).delete();
+  const notes = await db.notes.where("topicId").equals(id).toArray();
+  for (const n of notes) await db.noteTags.where("noteId").equals(n.id).delete();
+  await db.notes.where("topicId").equals(id).delete();
+  const cards = await db.flashcards.where("topicId").equals(id).toArray();
+  for (const c of cards) await db.cardTags.where("cardId").equals(c.id).delete();
+  await db.flashcards.where("topicId").equals(id).delete();
+  await db.studySessions.where("topicId").equals(id).modify({ topicId: null });
+  if (topic) await db.topics.delete(id);
+  return topic;
 }
 
 export async function updateTopic(
@@ -87,16 +182,17 @@ export async function updateTopic(
   data: { name?: string; description?: string }
 ) {
   const parsed = topicSchema.partial().parse(data);
-  return db.topic.update({ where: { id }, data: parsed });
+  await db.topics.update(id, { ...parsed, updatedAt: new Date() });
+  return db.topics.get(id);
 }
 
 // ─── Notes ────────────────────────────────────────────────────────
 export async function getNotes(topicId: string) {
-  return db.note.findMany({
-    where: { topicId },
-    orderBy: [{ isPinned: "desc" }, { updatedAt: "desc" }],
-    include: { tags: { include: { tag: true } } },
-  });
+  const notes = await db.notes.where("topicId").equals(topicId).toArray();
+  notes.sort((a, b) =>
+    Number(b.isPinned) - Number(a.isPinned) || b.updatedAt.getTime() - a.updatedAt.getTime()
+  );
+  return Promise.all(notes.map(async (n) => ({ ...n, tags: await noteTagsInclude(n.id) })));
 }
 
 export async function createNote(data: {
@@ -108,25 +204,14 @@ export async function createNote(data: {
 }) {
   const parsed = noteSchema.parse(data);
   const { tags, ...noteData } = parsed;
-  const result = await db.note.create({
-    data: {
-      ...noteData,
-      tags: tags?.length
-        ? {
-            create: await Promise.all(
-              tags.map(async (tagName) => ({
-                tag: {
-                  connectOrCreate: { where: { name: tagName }, create: { name: tagName } },
-                },
-              }))
-            ),
-          }
-        : undefined,
-    },
-    include: { tags: { include: { tag: true } } },
-  });
-  revalidatePath("/notes");
-  return result;
+  const now = new Date();
+  const note: NoteRec = { id: uid(), ...noteData, createdAt: now, updatedAt: now };
+  await db.notes.add(note);
+  for (const tagName of tags ?? []) {
+    const tag = await upsertTag(tagName);
+    await db.noteTags.add({ noteId: note.id, tagId: tag.id });
+  }
+  return { ...note, tags: await noteTagsInclude(note.id) };
 }
 
 export async function updateNote(
@@ -135,87 +220,58 @@ export async function updateNote(
 ) {
   const parsed = noteSchema.partial().parse(data);
   const { tags, ...noteData } = parsed;
-
-  const updated = await db.note.update({ where: { id }, data: noteData });
-
+  await db.notes.update(id, { ...noteData, updatedAt: new Date() });
   if (tags) {
-    await db.noteTag.deleteMany({ where: { noteId: id } });
+    await db.noteTags.where("noteId").equals(id).delete();
     for (const tagName of tags) {
-      const tag = await db.tag.upsert({
-        where: { name: tagName },
-        create: { name: tagName },
-        update: {},
-      });
-      await db.noteTag.create({ data: { noteId: id, tagId: tag.id } });
+      const tag = await upsertTag(tagName);
+      await db.noteTags.add({ noteId: id, tagId: tag.id });
     }
   }
-
-  return updated;
+  return db.notes.get(id);
 }
 
 export async function deleteNote(id: string) {
-  const result = await db.note.delete({ where: { id } });
-  revalidatePath("/notes");
-  return result;
+  const note = await db.notes.get(id);
+  await db.noteTags.where("noteId").equals(id).delete();
+  if (note) await db.notes.delete(id);
+  return note;
 }
 
 // ─── Flashcards ───────────────────────────────────────────────────
 export async function getFlashcards(topicId?: string, subjectId?: string) {
-  const where = {
-    ...(topicId && { topicId }),
-    ...(subjectId && { subjectId }),
-  };
-  return db.flashcard.findMany({
-    where,
-    orderBy: { nextReview: "asc" },
-    include: {
-      topic: {
-        select: {
-          id: true,
-          name: true,
-          subject: { select: { name: true } },
-        },
-      },
-    },
-  });
+  let cards = await db.flashcards.toArray();
+  if (topicId) cards = cards.filter((c) => c.topicId === topicId);
+  if (subjectId) cards = cards.filter((c) => c.subjectId === subjectId);
+  cards.sort((a, b) => a.nextReview.getTime() - b.nextReview.getTime());
+  return Promise.all(cards.map(async (c) => ({ ...c, topic: await topicInclude(c.topicId) })));
 }
 
 export async function getDueFlashcards() {
-  return db.flashcard.findMany({
-    where: { nextReview: { lte: new Date() } },
-    orderBy: { nextReview: "asc" },
-    take: 20,
-    include: {
-      topic: {
-        select: {
-          id: true,
-          name: true,
-          subject: { select: { name: true } },
-        },
-      },
-    },
-  });
+  const now = Date.now();
+  const all = await db.flashcards.toArray();
+  const due = all
+    .filter((c) => c.nextReview.getTime() <= now)
+    .sort((a, b) => a.nextReview.getTime() - b.nextReview.getTime())
+    .slice(0, 20);
+  return Promise.all(due.map(async (c) => ({ ...c, topic: await topicInclude(c.topicId) })));
 }
 
 // All due cards across every bundle (for "Study All Due").
 export async function getAllDueFlashcards() {
-  // Push the due-date filter into the DB (was: fetch ALL cards, filter in JS).
-  // `take` is a safety valve so a pathological deck can't OOM the server action.
-  return db.flashcard.findMany({
-    where: { nextReview: { lte: new Date() } },
-    orderBy: { nextReview: "asc" },
-    take: 2000,
-    include: {
-      topic: {
-        select: {
-          id: true,
-          name: true,
-          subject: { select: { name: true } },
-        },
-      },
-      bundle: { select: { id: true, name: true } },
-    },
-  });
+  const now = Date.now();
+  const all = await db.flashcards.toArray();
+  const due = all
+    .filter((c) => c.nextReview.getTime() <= now)
+    .sort((a, b) => a.nextReview.getTime() - b.nextReview.getTime())
+    .slice(0, 2000);
+  return Promise.all(
+    due.map(async (c) => ({
+      ...c,
+      topic: await topicInclude(c.topicId),
+      bundle: await bundleInclude(c.bundleId),
+    }))
+  );
 }
 
 export async function createFlashcard(data: {
@@ -233,19 +289,26 @@ export async function createFlashcard(data: {
     difficulty: z.number().int().min(1).max(5).optional(),
   }).parse(data);
   const now = new Date();
-  const result = await db.flashcard.create({
-    data: {
-      ...parsed,
-      // Explicitly set so new cards are immediately due (same clock as getDueFlashcards)
-      nextReview: now,
-      easeFactor: 2.5,
-      intervalDays: 0,
-      reviewCount: 0,
-    },
-  });
-  revalidatePath("/flashcards");
-  revalidatePath("/");
-  return result;
+  const card: FlashcardRec = {
+    id: uid(),
+    topicId: parsed.topicId,
+    subjectId: parsed.subjectId ?? null,
+    bundleId: null,
+    front: parsed.front,
+    back: parsed.back,
+    difficulty: parsed.difficulty ?? 1,
+    easeFactor: 2.5,
+    intervalDays: 0,
+    nextReview: now, // immediately due
+    lastReview: null,
+    reviewCount: 0,
+    consecutiveAgain: 0,
+    isLeech: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.flashcards.add(card);
+  return card;
 }
 
 export async function updateFlashcard(
@@ -259,25 +322,13 @@ export async function updateFlashcard(
     tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   }).parse(data);
   const { tags, ...rest } = parsed;
-  const updated = await db.flashcard.update({ where: { id }, data: rest });
-
-  if (tags) {
-    await db.cardTag.deleteMany({ where: { cardId: id } });
-    for (const tagName of tags) {
-      const tag = await db.tag.upsert({
-        where: { name: tagName },
-        create: { name: tagName },
-        update: {},
-      });
-      await db.cardTag.create({ data: { cardId: id, tagId: tag.id } });
-    }
-  }
-
-  return updated;
+  await db.flashcards.update(id, { ...rest, updatedAt: new Date() });
+  if (tags) await setCardTags(id, tags);
+  return db.flashcards.get(id);
 }
 
 export async function reviewFlashcard(id: string, quality: number) {
-  const card = await db.flashcard.findUnique({ where: { id } });
+  const card = await db.flashcards.get(id);
   if (!card) throw new Error("Flashcard not found");
 
   // SM-2 algorithm
@@ -298,56 +349,56 @@ export async function reviewFlashcard(id: string, quality: number) {
   const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + newInterval);
 
-  return db.flashcard.update({
-    where: { id },
-    data: {
-      easeFactor: newEF,
-      intervalDays: newInterval,
-      nextReview,
-      lastReview: new Date(),
-      reviewCount: { increment: 1 },
-      difficulty: quality,
-    },
+  await db.flashcards.update(id, {
+    easeFactor: newEF,
+    intervalDays: newInterval,
+    nextReview,
+    lastReview: new Date(),
+    reviewCount: card.reviewCount + 1,
+    difficulty: quality,
+    updatedAt: new Date(),
   });
+  return db.flashcards.get(id);
 }
 
 // ─── Flashcard Management (MANAGE ALL) ──────────────────────────
 export async function getAllFlashcards() {
-  // `take` is a safety valve for pathological decks; browse renders this
-  // client-side, so an unbounded result would jank the page.
-  return db.flashcard.findMany({
-    orderBy: [{ reviewCount: "asc" }, { createdAt: "desc" }],
-    take: 2000,
-    include: {
-      topic: {
-        select: {
-          id: true,
-          name: true,
-          subject: { select: { name: true, color: true } },
-        },
-      },
-      bundle: { select: { id: true, name: true, color: true } },
-      tags: { include: { tag: true } },
-    },
-  });
+  const all = await db.flashcards.toArray();
+  all.sort((a, b) => a.reviewCount - b.reviewCount || b.createdAt.getTime() - a.createdAt.getTime());
+  const cards = all.slice(0, 2000);
+  return Promise.all(
+    cards.map(async (c) => ({
+      ...c,
+      topic: await topicInclude(c.topicId),
+      bundle: await bundleInclude(c.bundleId),
+      tags: await cardTagsInclude(c.id),
+    }))
+  );
 }
 
 export async function deleteFlashcard(id: string) {
-  const result = await db.flashcard.delete({ where: { id } });
-  revalidatePath("/flashcards");
-  return result;
+  const card = await db.flashcards.get(id);
+  await db.cardTags.where("cardId").equals(id).delete();
+  await db.reviewLogs.where("flashcardId").equals(id).delete();
+  if (card) await db.flashcards.delete(id);
+  return card;
 }
 
 // ─── Study Sessions ───────────────────────────────────────────────
 export async function getStudySessions(limit = 50) {
-  return db.studySession.findMany({
-    orderBy: { startedAt: "desc" },
-    take: limit,
-    include: {
-      subject: { select: { id: true, name: true, color: true } },
-      topic: { select: { id: true, name: true } },
-    },
-  });
+  const all = await db.studySessions.orderBy("startedAt").reverse().toArray();
+  const sessions = all.slice(0, limit);
+  return Promise.all(
+    sessions.map(async (s) => {
+      const subject = s.subjectId ? await db.subjects.get(s.subjectId) : undefined;
+      const topic = s.topicId ? await db.topics.get(s.topicId) : undefined;
+      return {
+        ...s,
+        subject: subject ? { id: subject.id, name: subject.name, color: subject.color } : null,
+        topic: topic ? { id: topic.id, name: topic.name } : null,
+      };
+    })
+  );
 }
 
 export async function createStudySession(data: {
@@ -360,149 +411,169 @@ export async function createStudySession(data: {
   startedAt?: Date;
 }) {
   const now = new Date();
-  const result = await db.studySession.create({
-    data: {
-      ...data,
-      completed: data.completed ?? true,
-      startedAt: data.startedAt ?? now,
-      endedAt: now,
-    },
-  });
-  revalidatePath("/sessions");
-  revalidatePath("/");
-  return result;
+  const session: StudySessionRec = {
+    id: uid(),
+    subjectId: data.subjectId ?? null,
+    topicId: data.topicId ?? null,
+    title: data.title,
+    durationMin: data.durationMin,
+    notes: data.notes ?? null,
+    completed: data.completed ?? true,
+    startedAt: data.startedAt ?? now,
+    endedAt: now,
+  };
+  await db.studySessions.add(session);
+  return session;
 }
 
 export async function deleteStudySession(id: string) {
-  const result = await db.studySession.delete({ where: { id } });
-  revalidatePath("/sessions");
-  return result;
+  const session = await db.studySessions.get(id);
+  if (session) await db.studySessions.delete(id);
+  return session;
 }
 
 // ─── Dashboard Stats ──────────────────────────────────────────────
 export async function getDashboardStats() {
-  const [totalSubjects, totalTopics, totalFlashcards, totalSessions, dueCards, recentSessions] =
-    await Promise.all([
-      db.subject.count(),
-      db.topic.count(),
-      db.flashcard.count(),
-      db.studySession.count(),
-      db.flashcard.count({ where: { nextReview: { lte: new Date() } } }),
-      db.studySession.findMany({
-        orderBy: { startedAt: "desc" },
-        take: 5,
-        include: {
-          subject: { select: { name: true, color: true } },
-        },
-      }),
-    ]);
-
-  const totalMinutes = await db.studySession.aggregate({
-    _sum: { durationMin: true },
-  });
-
+  const [subjects, topics, flashcards, sessions] = await Promise.all([
+    db.subjects.count(),
+    db.topics.count(),
+    db.flashcards.toArray(),
+    db.studySessions.orderBy("startedAt").reverse().toArray(),
+  ]);
+  const now = Date.now();
+  const dueCards = flashcards.filter((c) => c.nextReview.getTime() <= now).length;
+  const totalMinutes = sessions.reduce((sum, s) => sum + s.durationMin, 0);
+  const recent = sessions.slice(0, 5);
+  const recentSessions = await Promise.all(
+    recent.map(async (s) => {
+      const subject = s.subjectId ? await db.subjects.get(s.subjectId) : undefined;
+      return {
+        ...s,
+        subject: subject ? { name: subject.name, color: subject.color } : null,
+      };
+    })
+  );
   return {
-    totalSubjects,
-    totalTopics,
-    totalFlashcards,
-    totalSessions,
+    totalSubjects: subjects,
+    totalTopics: topics,
+    totalFlashcards: flashcards.length,
+    totalSessions: sessions.length,
     dueCards,
-    totalMinutes: totalMinutes._sum.durationMin ?? 0,
+    totalMinutes,
     recentSessions,
   };
 }
 
 // ─── Global Queries (for Notes page) ─────────────────────────────
 export async function getAllTopics() {
-  return db.topic.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      subject: { select: { id: true, name: true, color: true } },
-      _count: { select: { resources: true, notes: true, flashcards: true } },
-    },
-  });
+  const all = await db.topics.orderBy("createdAt").reverse().toArray();
+  return Promise.all(
+    all.map(async (t) => {
+      const subject = t.subjectId ? await db.subjects.get(t.subjectId) : undefined;
+      return {
+        ...t,
+        subject: subject ? { id: subject.id, name: subject.name, color: subject.color } : null,
+        _count: await topicCounts(t.id),
+      };
+    })
+  );
 }
 
 export async function getAllNotes() {
-  return db.note.findMany({
-    orderBy: [{ isPinned: "desc" }, { updatedAt: "desc" }],
-    include: {
-      tags: { include: { tag: true } },
-      topic: { select: { id: true, name: true, subject: { select: { name: true, color: true } } } },
-    },
-  });
+  const all = await db.notes.toArray();
+  all.sort((a, b) =>
+    Number(b.isPinned) - Number(a.isPinned) || b.updatedAt.getTime() - a.updatedAt.getTime()
+  );
+  return Promise.all(
+    all.map(async (n) => {
+      const topic = n.topicId ? await db.topics.get(n.topicId) : undefined;
+      let topicInc: { id: string; name: string; subject: { name: string; color: string } | null } | null = null;
+      if (topic) {
+        const subject = topic.subjectId ? await db.subjects.get(topic.subjectId) : undefined;
+        topicInc = {
+          id: topic.id,
+          name: topic.name,
+          subject: subject ? { name: subject.name, color: subject.color } : null,
+        };
+      }
+      return { ...n, tags: await noteTagsInclude(n.id), topic: topicInc };
+    })
+  );
 }
 
 // ─── Bundles (Flashcard Decks) ─────────────────────────────────
 export async function getBundles() {
-  return db.bundle.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      _count: { select: { flashcards: true } },
-    },
-  });
+  const all = await db.bundles.orderBy("createdAt").reverse().toArray();
+  return Promise.all(
+    all.map(async (b) => ({
+      ...b,
+      _count: { flashcards: await db.flashcards.where("bundleId").equals(b.id).count() },
+    }))
+  );
 }
 
 export async function getBundle(id: string) {
-  return db.bundle.findUnique({
-    where: { id },
-    include: {
-      _count: { select: { flashcards: true } },
-    },
-  });
+  const bundle = await db.bundles.get(id);
+  if (!bundle) return null;
+  return {
+    ...bundle,
+    _count: { flashcards: await db.flashcards.where("bundleId").equals(id).count() },
+  };
 }
 
 export async function createBundle(data: { name: string; description?: string; color?: string }) {
   const parsed = bundleSchema.parse(data);
-  const result = await db.bundle.create({ data: parsed });
-  revalidatePath("/bundles");
-  revalidatePath("/");
-  return result;
+  const now = new Date();
+  const bundle: BundleRec = { id: uid(), ...parsed, createdAt: now, updatedAt: now };
+  await db.bundles.add(bundle);
+  return bundle;
 }
 
 export async function updateBundle(id: string, data: { name?: string; description?: string; color?: string }) {
   const parsed = bundleSchema.partial().parse(data);
-  return db.bundle.update({ where: { id }, data: parsed });
+  await db.bundles.update(id, { ...parsed, updatedAt: new Date() });
+  return db.bundles.get(id);
 }
 
 export async function deleteBundle(id: string) {
-  // Delete the bundle's flashcards first (and their review logs cascade),
-  // then the bundle itself — matches the modal promise "DELETE & ALL ITS FLASHCARDS".
-  await db.flashcard.deleteMany({ where: { bundleId: id } });
-  const result = await db.bundle.delete({ where: { id } });
-  revalidatePath("/bundles");
-  revalidatePath("/flashcards");
-  return result;
+  // Delete the bundle's flashcards first (and their tags/logs),
+  // then the bundle itself — matches "DELETE & ALL ITS FLASHCARDS".
+  const cards = await db.flashcards.where("bundleId").equals(id).toArray();
+  for (const c of cards) {
+    await db.cardTags.where("cardId").equals(c.id).delete();
+    await db.reviewLogs.where("flashcardId").equals(c.id).delete();
+  }
+  await db.flashcards.where("bundleId").equals(id).delete();
+  const bundle = await db.bundles.get(id);
+  if (bundle) await db.bundles.delete(id);
+  return bundle;
 }
 
 export async function getBundleCards(bundleId: string) {
-  return db.flashcard.findMany({
-    where: { bundleId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      topic: { select: { id: true, name: true, subject: { select: { name: true } } } },
-      tags: { include: { tag: true } },
-    },
-  });
+  const cards = await db.flashcards.where("bundleId").equals(bundleId).toArray();
+  cards.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return Promise.all(
+    cards.map(async (c) => ({
+      ...c,
+      topic: await topicInclude(c.topicId),
+      tags: await cardTagsInclude(c.id),
+    }))
+  );
 }
 
 // ─── Card tag helpers ────────────────────────────────────────
 export async function setCardTags(cardId: string, tagNames: string[]) {
-  await db.cardTag.deleteMany({ where: { cardId } });
+  await db.cardTags.where("cardId").equals(cardId).delete();
   for (const name of tagNames) {
-    const tag = await db.tag.upsert({
-      where: { name },
-      create: { name },
-      update: {},
-    });
-    await db.cardTag.create({ data: { cardId, tagId: tag.id } });
+    const tag = await upsertTag(name);
+    await db.cardTags.add({ cardId, tagId: tag.id });
   }
 }
 
 // ─── Review with Logging + Leech Detection ────────────────────
 export async function reviewFlashcardWithLog(id: string, quality: number) {
   const q = z.number().int().min(0).max(5).parse(quality);
-  const card = await db.flashcard.findUnique({ where: { id } });
+  const card = await db.flashcards.get(id);
   if (!card) throw new Error("Flashcard not found");
 
   // SM-2 algorithm
@@ -527,68 +598,58 @@ export async function reviewFlashcardWithLog(id: string, quality: number) {
   const newConsecutive = q < 3 ? card.consecutiveAgain + 1 : 0;
   const isLeech = newConsecutive >= 5;
 
-  // Update card
-  const updated = await db.flashcard.update({
-    where: { id },
-    data: {
-      easeFactor: newEF,
-      intervalDays: newInterval,
-      nextReview,
-      lastReview: new Date(),
-      reviewCount: { increment: 1 },
-      difficulty: q,
-      consecutiveAgain: newConsecutive,
-      isLeech,
-    },
+  await db.flashcards.update(id, {
+    easeFactor: newEF,
+    intervalDays: newInterval,
+    nextReview,
+    lastReview: new Date(),
+    reviewCount: card.reviewCount + 1,
+    difficulty: q,
+    consecutiveAgain: newConsecutive,
+    isLeech,
+    updatedAt: new Date(),
   });
 
   // Log the review
-  await db.reviewLog.create({
-    data: { flashcardId: id, quality: q },
-  });
+  const log: ReviewLogRec = { id: uid(), flashcardId: id, quality: q, reviewedAt: new Date() };
+  await db.reviewLogs.add(log);
 
-  return updated;
+  return db.flashcards.get(id);
 }
 
 // ─── Leech Cards ──────────────────────────────────────────────
 export async function getLeechCards(bundleId?: string) {
-  return db.flashcard.findMany({
-    where: {
-      isLeech: true,
-      ...(bundleId && { bundleId }),
-    },
-    include: {
-      topic: { select: { id: true, name: true, subject: { select: { name: true } } } },
-      bundle: { select: { id: true, name: true } },
-    },
-  });
+  // IndexedDB can't index booleans, so filter in JS.
+  let cards = (await db.flashcards.toArray()).filter((c) => c.isLeech === true);
+  if (bundleId) cards = cards.filter((c) => c.bundleId === bundleId);
+  return Promise.all(
+    cards.map(async (c) => ({
+      ...c,
+      topic: await topicInclude(c.topicId),
+      bundle: await bundleInclude(c.bundleId),
+    }))
+  );
 }
 
 export async function unLeechCard(id: string) {
-  return db.flashcard.update({
-    where: { id },
-    data: { isLeech: false, consecutiveAgain: 0 },
-  });
+  await db.flashcards.update(id, { isLeech: false, consecutiveAgain: 0, updatedAt: new Date() });
+  return db.flashcards.get(id);
 }
 
 // ─── Heatmap & Streak ─────────────────────────────────────────
 export async function getHeatmapData() {
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const logs = await db.reviewLogs
+    .where("reviewedAt")
+    .aboveOrEqual(ninetyDaysAgo)
+    .toArray();
 
-  const logs = await db.reviewLog.findMany({
-    where: { reviewedAt: { gte: ninetyDaysAgo } },
-    select: { reviewedAt: true },
-  });
-
-  // Group by date string in JS (Prisma groupBy groups by exact DateTime,
-  // so two reviews at different times on the same day would be separate entries).
   const counts = new Map<string, number>();
   for (const log of logs) {
-    const date = log.reviewedAt.toISOString().split("T")[0];
+    const date = new Date(log.reviewedAt).toISOString().split("T")[0];
     counts.set(date, (counts.get(date) ?? 0) + 1);
   }
-
   return Array.from(counts.entries()).map(([date, count]) => ({ date, count }));
 }
 
@@ -596,23 +657,15 @@ export async function getStreak() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Single query: fetch all distinct review dates, then compute streak in JS.
-  // Avoids the N+1 bug where each day triggered a separate DB query.
   const lookback = new Date(today);
-  lookback.setDate(lookback.getDate() - 365); // safety valve: 1 year max
+  lookback.setDate(lookback.getDate() - 365);
+  const logs = await db.reviewLogs.where("reviewedAt").aboveOrEqual(lookback).toArray();
 
-  const logs = await db.reviewLog.findMany({
-    where: { reviewedAt: { gte: lookback } },
-    select: { reviewedAt: true },
-  });
-
-  // Build a set of unique dates (YYYY-MM-DD) that had reviews
   const reviewDates = new Set<string>();
   for (const log of logs) {
-    reviewDates.add(log.reviewedAt.toISOString().split("T")[0]);
+    reviewDates.add(new Date(log.reviewedAt).toISOString().split("T")[0]);
   }
 
-  // Walk backwards from today, counting consecutive days
   let streak = 0;
   const checkDate = new Date(today);
   while (true) {
@@ -621,7 +674,6 @@ export async function getStreak() {
     streak++;
     checkDate.setDate(checkDate.getDate() - 1);
   }
-
   return streak;
 }
 
@@ -634,19 +686,27 @@ export async function createBundleFlashcard(data: {
 }) {
   const parsed = bundleCardSchema.parse(data);
   const { tags, ...rest } = parsed;
-  const card = await db.flashcard.create({
-    data: {
-      ...rest,
-      nextReview: new Date(),
-      easeFactor: 2.5,
-      intervalDays: 0,
-      reviewCount: 0,
-    },
-  });
+  const now = new Date();
+  const card: FlashcardRec = {
+    id: uid(),
+    topicId: null,
+    subjectId: null,
+    bundleId: rest.bundleId,
+    front: rest.front,
+    back: rest.back,
+    difficulty: 1,
+    easeFactor: 2.5,
+    intervalDays: 0,
+    nextReview: now,
+    lastReview: null,
+    reviewCount: 0,
+    consecutiveAgain: 0,
+    isLeech: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.flashcards.add(card);
   if (tags?.length) await setCardTags(card.id, tags);
-  revalidatePath("/flashcards");
-  revalidatePath("/bundles");
-  revalidatePath("/");
   return card;
 }
 
@@ -659,52 +719,36 @@ export async function importCardsIntoBundle(
     (cards ?? []).map((c) => ({ front: c.front, back: c.back, tags: c.tags }))
   );
 
-  // Collect every unique tag name across the whole batch ONCE (no N+1).
-  const tagNames = Array.from(
-    new Set(parsed.flatMap((c) => (c.tags ?? []).map((t) => t)))
-  );
-  const tagByName = new Map<string, string>();
-  if (tagNames.length) {
-    // Upsert all unique tags in one pass, then build name -> id map.
-    await db.$transaction(
-      tagNames.map((name) =>
-        db.tag.upsert({ where: { name }, create: { name }, update: {} })
-      )
-    );
-    const existing = await db.tag.findMany({ where: { name: { in: tagNames } } });
-    for (const t of existing) tagByName.set(t.name, t.id);
-  }
+  const now = new Date();
+  const newCards: FlashcardRec[] = parsed.map((c) => ({
+    id: uid(),
+    topicId: null,
+    subjectId: null,
+    bundleId,
+    front: c.front,
+    back: c.back,
+    difficulty: 1,
+    easeFactor: 2.5,
+    intervalDays: 0,
+    nextReview: now,
+    lastReview: null,
+    reviewCount: 0,
+    consecutiveAgain: 0,
+    isLeech: false,
+    createdAt: now,
+    updatedAt: now,
+  }));
+  await db.flashcards.bulkAdd(newCards);
 
-  // Create all cards in a single transaction, then link tags post-commit.
-  const created = await db.$transaction(
-    parsed.map((c) =>
-      db.flashcard.create({
-        data: {
-          bundleId,
-          front: c.front,
-          back: c.back,
-          nextReview: new Date(),
-          easeFactor: 2.5,
-          intervalDays: 0,
-          reviewCount: 0,
-        },
-      })
-    )
-  );
-
-  // Build per-card tag links from the parsed data + resolved tag map.
+  // Tag links
   const links: { cardId: string; tagId: string }[] = [];
-  parsed.forEach((c, i) => {
-    const cardId = (created as { id: string }[])[i]?.id;
-    if (!cardId) return;
-    for (const name of c.tags ?? []) {
-      const tagId = tagByName.get(name);
-      if (tagId) links.push({ cardId, tagId });
+  for (let i = 0; i < parsed.length; i++) {
+    for (const name of parsed[i].tags ?? []) {
+      const tag = await upsertTag(name);
+      links.push({ cardId: newCards[i].id, tagId: tag.id });
     }
-  });
-  if (links.length) {
-    await db.cardTag.createMany({ data: links });
   }
+  if (links.length) await db.cardTags.bulkAdd(links);
 
   return { count: parsed.length };
 }
@@ -718,18 +762,14 @@ export type ExportBundle = {
 };
 
 export async function exportBundle(bundleId: string) {
-  const bundle = await db.bundle.findUnique({
-    where: { id: bundleId },
-    include: {
-      flashcards: { select: { front: true, back: true } },
-    },
-  });
+  const bundle = await db.bundles.get(bundleId);
   if (!bundle) throw new Error("Bundle not found");
+  const cards = await db.flashcards.where("bundleId").equals(bundleId).toArray();
   const payload: ExportBundle = {
     name: bundle.name,
     description: bundle.description,
     color: bundle.color,
-    cards: bundle.flashcards.map((c) => ({ front: c.front, back: c.back })),
+    cards: cards.map((c) => ({ front: c.front, back: c.back })),
   };
   return JSON.stringify(payload, null, 2);
 }
@@ -750,29 +790,23 @@ export async function importBundleCards(
     }))
     .filter((c) => c.front && c.back);
   if (normalized.length === 0) return { count: 0 };
-  const res = await importCardsIntoBundle(bundleId, normalized);
-  revalidatePath("/flashcards");
-  revalidatePath("/bundles");
-  return res;
+  return importCardsIntoBundle(bundleId, normalized);
 }
 
 // ─── NotebookLM export (markdown source) ─────────────────────
-// NotebookLM has no public API and blocks embedding, so we generate a
-// markdown source doc the user can paste/drop into notebook.google.com.
 export async function exportBundleMarkdown(bundleId: string): Promise<string> {
-  const bundle = await db.bundle.findUnique({
-    where: { id: bundleId },
-    include: { flashcards: { orderBy: { createdAt: "asc" } } },
-  });
+  const bundle = await db.bundles.get(bundleId);
   if (!bundle) throw new Error("Bundle not found");
+  const cards = await db.flashcards.where("bundleId").equals(bundleId).toArray();
+  cards.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const lines: string[] = [];
   lines.push(`# ${bundle.name}`);
   if (bundle.description) lines.push(`\n> ${bundle.description}`);
-  lines.push(`\n_Study source exported from Hymerious Study. ${bundle.flashcards.length} cards._\n`);
-  if (bundle.flashcards.length === 0) {
+  lines.push(`\n_Study source exported from Hymerious Study. ${cards.length} cards._\n`);
+  if (cards.length === 0) {
     lines.push("_No flashcards in this bundle yet._");
   } else {
-    bundle.flashcards.forEach((c, i) => {
+    cards.forEach((c, i) => {
       lines.push(`## ${i + 1}. ${c.front}`);
       lines.push(`\n${c.back}\n`);
     });
@@ -794,71 +828,53 @@ export async function exportNotesMarkdown(): Promise<string> {
   }
   return lines.join("\n");
 }
+
 // ─── Edit bundle from flashcards page ────────────────────────
 export async function editBundleFromFlashcards(
   id: string,
   data: { name?: string; description?: string; color?: string }
 ) {
   const parsed = bundleSchema.partial().parse(data);
-  return db.bundle.update({ where: { id }, data: parsed });
+  await db.bundles.update(id, { ...parsed, updatedAt: new Date() });
+  return db.bundles.get(id);
 }
 
 // ─── Batch Card Operations ──────────────────────────────────
 export async function batchDeleteCards(ids: string[]) {
   if (!ids.length) return { count: 0 };
-  const result = await db.flashcard.deleteMany({ where: { id: { in: ids } } });
-  revalidatePath("/flashcards");
-  revalidatePath("/bundles");
-  revalidatePath("/");
-  return { count: result.count };
+  for (const id of ids) {
+    await db.cardTags.where("cardId").equals(id).delete();
+    await db.reviewLogs.where("flashcardId").equals(id).delete();
+  }
+  await db.flashcards.bulkDelete(ids);
+  return { count: ids.length };
 }
 
 export async function batchTagCards(ids: string[], tagNames: string[]) {
   if (!ids.length || !tagNames.length) return { count: 0 };
-  // Upsert all tags first
-  await db.$transaction(
-    tagNames.map((name) =>
-      db.tag.upsert({ where: { name }, create: { name }, update: {} })
-    )
-  );
-  const tags = await db.tag.findMany({ where: { name: { in: tagNames } } });
-  const tagMap = new Map(tags.map((t) => [t.name, t.id]));
-  // Build card-tag links
   const links: { cardId: string; tagId: string }[] = [];
   for (const cardId of ids) {
     for (const name of tagNames) {
-      const tagId = tagMap.get(name);
-      if (tagId) links.push({ cardId, tagId });
+      const tag = await upsertTag(name);
+      links.push({ cardId, tagId: tag.id });
     }
   }
-  if (links.length) {
-    // SQLite doesn't support skipDuplicates on createMany,
-    // so filter out links that already exist.
-    const existing = await db.cardTag.findMany({
-      where: {
-        OR: links.map((l) => ({ cardId: l.cardId, tagId: l.tagId })),
-      },
-      select: { cardId: true, tagId: true },
-    });
-    const existingSet = new Set(existing.map((e) => `${e.cardId}:${e.tagId}`));
-    const newLinks = links.filter((l) => !existingSet.has(`${l.cardId}:${l.tagId}`));
-    if (newLinks.length) {
-      await db.cardTag.createMany({ data: newLinks });
-    }
+  // Skip links that already exist
+  const newLinks: { cardId: string; tagId: string }[] = [];
+  for (const l of links) {
+    const exists = await db.cardTags.get([l.cardId, l.tagId]);
+    if (!exists) newLinks.push(l);
   }
-  revalidatePath("/flashcards");
+  if (newLinks.length) await db.cardTags.bulkAdd(newLinks);
   return { count: ids.length };
 }
 
 export async function batchMoveCards(ids: string[], targetBundleId: string | null) {
   if (!ids.length) return { count: 0 };
-  const result = await db.flashcard.updateMany({
-    where: { id: { in: ids } },
-    data: { bundleId: targetBundleId },
-  });
-  revalidatePath("/flashcards");
-  revalidatePath("/bundles");
-  return { count: result.count };
+  for (const id of ids) {
+    await db.flashcards.update(id, { bundleId: targetBundleId, updatedAt: new Date() });
+  }
+  return { count: ids.length };
 }
 
 // ─── Full Data Export / Import ───────────────────────────────
@@ -895,66 +911,72 @@ export type FullExport = {
 
 export async function exportAllData(): Promise<string> {
   const [subjects, bundles, sessions] = await Promise.all([
-    db.subject.findMany({
-      include: {
-        topics: {
-          include: {
-            notes: { include: { tags: { include: { tag: true } } } },
-            flashcards: { include: { tags: { include: { tag: true } } } },
-          },
-        },
-      },
-    }),
-    db.bundle.findMany({
-      include: { flashcards: { include: { tags: { include: { tag: true } } } } },
-    }),
-    db.studySession.findMany({ orderBy: { startedAt: "asc" } }),
+    db.subjects.toArray(),
+    db.bundles.toArray(),
+    db.studySessions.orderBy("startedAt").toArray(),
   ]);
 
   const exportData: FullExport = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    subjects: subjects.map((s) => ({
-      name: s.name,
-      description: s.description,
-      color: s.color,
-      icon: s.icon,
-      topics: s.topics.map((t) => ({
-        name: t.name,
-        description: t.description,
-        order: t.order,
-        notes: t.notes.map((n) => ({
-          title: n.title,
-          content: n.content,
-          isPinned: n.isPinned,
-          tags: n.tags.map((nt) => nt.tag.name),
-        })),
-        flashcards: t.flashcards.map((c) => ({
-          front: c.front,
-          back: c.back,
-          difficulty: c.difficulty,
-          tags: c.tags.map((ct) => ct.tag.name),
-        })),
-      })),
-    })),
-    bundles: bundles.map((b) => ({
-      name: b.name,
-      description: b.description,
-      color: b.color,
-      flashcards: b.flashcards.map((c) => ({
-        front: c.front,
-        back: c.back,
-        tags: c.tags.map((ct) => ct.tag.name),
-      })),
-    })),
+    subjects: [],
+    bundles: [],
     sessions: sessions.map((s) => ({
       title: s.title,
       durationMin: s.durationMin,
       notes: s.notes,
       completed: s.completed,
-      startedAt: s.startedAt.toISOString(),
+      startedAt: new Date(s.startedAt).toISOString(),
     })),
   };
+
+  for (const s of subjects) {
+    const topics = await db.topics.where("subjectId").equals(s.id).sortBy("order");
+    const topicEntries = [];
+    for (const t of topics) {
+      const notes = await db.notes.where("topicId").equals(t.id).toArray();
+      const noteEntries = [];
+      for (const n of notes) {
+        const tags = (await noteTagsInclude(n.id)).map((nt) => nt.tag.name);
+        noteEntries.push({ title: n.title, content: n.content, isPinned: n.isPinned, tags });
+      }
+      const cards = await db.flashcards.where("topicId").equals(t.id).toArray();
+      const cardEntries = [];
+      for (const c of cards) {
+        const tags = (await cardTagsInclude(c.id)).map((ct) => ct.tag.name);
+        cardEntries.push({ front: c.front, back: c.back, difficulty: c.difficulty, tags });
+      }
+      topicEntries.push({
+        name: t.name,
+        description: t.description,
+        order: t.order,
+        notes: noteEntries,
+        flashcards: cardEntries,
+      });
+    }
+    exportData.subjects.push({
+      name: s.name,
+      description: s.description,
+      color: s.color,
+      icon: s.icon,
+      topics: topicEntries,
+    });
+  }
+
+  for (const b of bundles) {
+    const cards = await db.flashcards.where("bundleId").equals(b.id).toArray();
+    const cardEntries = [];
+    for (const c of cards) {
+      const tags = (await cardTagsInclude(c.id)).map((ct) => ct.tag.name);
+      cardEntries.push({ front: c.front, back: c.back, tags });
+    }
+    exportData.bundles.push({
+      name: b.name,
+      description: b.description,
+      color: b.color,
+      flashcards: cardEntries,
+    });
+  }
 
   return JSON.stringify(exportData, null, 2);
 }
@@ -967,47 +989,35 @@ export async function importAllData(json: string): Promise<{ imported: string }>
 
   // Import subjects → topics → notes + flashcards
   for (const s of data.subjects) {
-    const subject = await db.subject.create({
-      data: { name: s.name, description: s.description, color: s.color, icon: s.icon },
+    const subject = await createSubject({
+      name: s.name,
+      description: s.description ?? undefined,
+      color: s.color,
+      icon: s.icon,
     });
     imported += `subject "${s.name}" `;
     for (const t of s.topics) {
-      const topic = await db.topic.create({
-        data: { subjectId: subject.id, name: t.name, description: t.description, order: t.order },
+      const topic = await createTopic({
+        subjectId: subject.id,
+        name: t.name,
+        description: t.description ?? undefined,
+        order: t.order,
       });
-      // Notes
       for (const n of t.notes) {
-        await db.note.create({
-          data: {
-            topicId: topic.id,
-            title: n.title,
-            content: n.content,
-            isPinned: n.isPinned,
-            tags: n.tags.length
-              ? {
-                  create: await Promise.all(
-                    n.tags.map(async (tagName) => ({
-                      tag: { connectOrCreate: { where: { name: tagName }, create: { name: tagName } } },
-                    }))
-                  ),
-                }
-              : undefined,
-          },
+        await createNote({
+          topicId: topic.id,
+          title: n.title,
+          content: n.content,
+          isPinned: n.isPinned,
+          tags: n.tags,
         });
       }
-      // Flashcards
       for (const c of t.flashcards) {
-        const card = await db.flashcard.create({
-          data: {
-            topicId: topic.id,
-            front: c.front,
-            back: c.back,
-            difficulty: c.difficulty,
-            nextReview: new Date(),
-            easeFactor: 2.5,
-            intervalDays: 0,
-            reviewCount: 0,
-          },
+        const card = await createFlashcard({
+          topicId: topic.id,
+          front: c.front,
+          back: c.back,
+          difficulty: c.difficulty,
         });
         if (c.tags.length) await setCardTags(card.id, c.tags);
       }
@@ -1016,21 +1026,17 @@ export async function importAllData(json: string): Promise<{ imported: string }>
 
   // Import bundles → flashcards
   for (const b of data.bundles) {
-    const bundle = await db.bundle.create({
-      data: { name: b.name, description: b.description, color: b.color },
+    const bundle = await createBundle({
+      name: b.name,
+      description: b.description ?? undefined,
+      color: b.color,
     });
     imported += `bundle "${b.name}" `;
     for (const c of b.flashcards) {
-      const card = await db.flashcard.create({
-        data: {
-          bundleId: bundle.id,
-          front: c.front,
-          back: c.back,
-          nextReview: new Date(),
-          easeFactor: 2.5,
-          intervalDays: 0,
-          reviewCount: 0,
-        },
+      const card = await createBundleFlashcard({
+        bundleId: bundle.id,
+        front: c.front,
+        back: c.back,
       });
       if (c.tags.length) await setCardTags(card.id, c.tags);
     }
@@ -1038,24 +1044,15 @@ export async function importAllData(json: string): Promise<{ imported: string }>
 
   // Import sessions
   for (const s of data.sessions) {
-    await db.studySession.create({
-      data: {
-        title: s.title,
-        durationMin: s.durationMin,
-        notes: s.notes,
-        completed: s.completed,
-        startedAt: new Date(s.startedAt),
-        endedAt: new Date(s.startedAt),
-      },
+    await createStudySession({
+      title: s.title,
+      durationMin: s.durationMin,
+      notes: s.notes ?? undefined,
+      completed: s.completed,
+      startedAt: new Date(s.startedAt),
     });
   }
   imported += `${data.sessions.length} sessions`;
 
-  revalidatePath("/");
-  revalidatePath("/subjects");
-  revalidatePath("/flashcards");
-  revalidatePath("/bundles");
-  revalidatePath("/notes");
-  revalidatePath("/sessions");
   return { imported };
 }

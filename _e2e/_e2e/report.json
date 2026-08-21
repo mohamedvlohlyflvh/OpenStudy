@@ -1,0 +1,330 @@
+{
+  "report": [
+    {
+      "page": "dashboard",
+      "theme": "onyx",
+      "file": "onyx\\dashboard.png",
+      "ok": true
+    },
+    {
+      "page": "dashboard",
+      "theme": "void",
+      "file": "void\\dashboard.png",
+      "ok": true
+    },
+    {
+      "page": "dashboard",
+      "theme": "emerald",
+      "file": "emerald\\dashboard.png",
+      "ok": true
+    },
+    {
+      "page": "dashboard",
+      "theme": "magma",
+      "file": "magma\\dashboard.png",
+      "ok": true
+    },
+    {
+      "page": "dashboard",
+      "theme": "grape",
+      "file": "grape\\dashboard.png",
+      "ok": true
+    },
+    {
+      "page": "dashboard",
+      "theme": "light",
+      "file": "light\\dashboard.png",
+      "ok": true
+    },
+    {
+      "page": "subjects",
+      "theme": "onyx",
+      "file": "onyx\\subjects.png",
+      "ok": true
+    },
+    {
+      "page": "subjects",
+      "theme": "void",
+      "file": "void\\subjects.png",
+      "ok": true
+    },
+    {
+      "page": "subjects",
+      "theme": "emerald",
+      "file": "emerald\\subjects.png",
+      "ok": true
+    },
+    {
+      "page": "subjects",
+      "theme": "magma",
+      "file": "magma\\subjects.png",
+      "ok": true
+    },
+    {
+      "page": "subjects",
+      "theme": "grape",
+      "file": "grape\\subjects.png",
+      "ok": true
+    },
+    {
+      "page": "subjects",
+      "theme": "light",
+      "file": "light\\subjects.png",
+      "ok": true
+    },
+    {
+      "page": "notes",
+      "theme": "onyx",
+      "file": "onyx\\notes.png",
+      "ok": true
+    },
+    {
+      "page": "notes",
+      "theme": "void",
+      "file": "void\\notes.png",
+      "ok": true
+    },
+    {
+      "page": "notes",
+      "theme": "emerald",
+      "file": "emerald\\notes.png",
+      "ok": true
+    },
+    {
+      "page": "notes",
+      "theme": "magma",
+      "file": "magma\\notes.png",
+      "ok": true
+    },
+    {
+      "page": "notes",
+      "theme": "grape",
+      "file": "grape\\notes.png",
+      "ok": true
+    },
+    {
+      "page": "notes",
+      "theme": "light",
+      "file": "light\\notes.png",
+      "ok": true
+    },
+    {
+      "page": "bundles",
+      "theme": "onyx",
+      "file": "onyx\\bundles.png",
+      "ok": true
+    },
+    {
+      "page": "bundles",
+      "theme": "void",
+      "file": "void\\bundles.png",
+      "ok": true
+    },
+    {
+      "page": "bundles",
+      "theme": "emerald",
+      "file": "emerald\\bundles.png",
+      "ok": true
+    },
+    {
+      "page": "bundles",
+      "theme": "magma",
+      "file": "magma\\bundles.png",
+      "ok": true
+    },
+    {
+      "page": "bundles",
+      "theme": "grape",
+      "file": "grape\\bundles.png",
+      "ok": true
+    },
+    {
+      "page": "bundles",
+      "theme": "light",
+      "file": "light\\bundles.png",
+      "ok": true
+    },
+    {
+      "page": "bundle-cards",
+      "theme": "onyx",
+      "file": "onyx\\bundle-cards.png",
+      "ok": true
+    },
+    {
+      "page": "bundle-cards",
+      "theme": "void",
+      "file": "void\\bundle-cards.png",
+      "ok": true
+    },
+    {
+      "page": "bundle-cards",
+      "theme": "emerald",
+      "file": "emerald\\bundle-cards.png",
+      "ok": true
+    },
+    {
+      "page": "bundle-cards",
+      "theme": "magma",
+      "file": "magma\\bundle-cards.png",
+      "ok": true
+    },
+    {
+      "page": "bundle-cards",
+      "theme": "grape",
+      "file": "grape\\bundle-cards.png",
+      "ok": true
+    },
+    {
+      "page": "bundle-cards",
+      "theme": "light",
+      "file": "light\\bundle-cards.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards",
+      "theme": "onyx",
+      "file": "onyx\\flashcards.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards",
+      "theme": "void",
+      "file": "void\\flashcards.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards",
+      "theme": "emerald",
+      "file": "emerald\\flashcards.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards",
+      "theme": "magma",
+      "file": "magma\\flashcards.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards",
+      "theme": "grape",
+      "file": "grape\\flashcards.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards",
+      "theme": "light",
+      "file": "light\\flashcards.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards-alldue",
+      "theme": "onyx",
+      "file": "onyx\\flashcards-alldue.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards-alldue",
+      "theme": "void",
+      "file": "void\\flashcards-alldue.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards-alldue",
+      "theme": "emerald",
+      "file": "emerald\\flashcards-alldue.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards-alldue",
+      "theme": "magma",
+      "file": "magma\\flashcards-alldue.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards-alldue",
+      "theme": "grape",
+      "file": "grape\\flashcards-alldue.png",
+      "ok": true
+    },
+    {
+      "page": "flashcards-alldue",
+      "theme": "light",
+      "file": "light\\flashcards-alldue.png",
+      "ok": true
+    },
+    {
+      "page": "sessions",
+      "theme": "onyx",
+      "file": "onyx\\sessions.png",
+      "ok": true
+    },
+    {
+      "page": "sessions",
+      "theme": "void",
+      "file": "void\\sessions.png",
+      "ok": true
+    },
+    {
+      "page": "sessions",
+      "theme": "emerald",
+      "file": "emerald\\sessions.png",
+      "ok": true
+    },
+    {
+      "page": "sessions",
+      "theme": "magma",
+      "file": "magma\\sessions.png",
+      "ok": true
+    },
+    {
+      "page": "sessions",
+      "theme": "grape",
+      "file": "grape\\sessions.png",
+      "ok": true
+    },
+    {
+      "page": "sessions",
+      "theme": "light",
+      "file": "light\\sessions.png",
+      "ok": true
+    },
+    {
+      "page": "settings",
+      "theme": "onyx",
+      "file": "onyx\\settings.png",
+      "ok": true
+    },
+    {
+      "page": "settings",
+      "theme": "void",
+      "file": "void\\settings.png",
+      "ok": true
+    },
+    {
+      "page": "settings",
+      "theme": "emerald",
+      "file": "emerald\\settings.png",
+      "ok": true
+    },
+    {
+      "page": "settings",
+      "theme": "magma",
+      "file": "magma\\settings.png",
+      "ok": true
+    },
+    {
+      "page": "settings",
+      "theme": "grape",
+      "file": "grape\\settings.png",
+      "ok": true
+    },
+    {
+      "page": "settings",
+      "theme": "light",
+      "file": "light\\settings.png",
+      "ok": true
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": []
+}
