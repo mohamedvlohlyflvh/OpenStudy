@@ -170,7 +170,7 @@ export default function SubjectsPage() {
     <div className="p-8 lg:p-12">
       {/* Header */}
       <div className="mb-16">
-        <div className="flex items-end justify-between">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <RevealHeading text="SUBJECTS" className="text-5xl lg:text-8xl" />
             <p className="mt-4 text-sm text-muted-fg uppercase tracking-widest">
@@ -236,7 +236,7 @@ export default function SubjectsPage() {
                       {subject.name.charAt(0)}
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-xl font-bold uppercase tracking-tight">
+                      <h3 className="truncate text-xl font-bold uppercase tracking-tight">
                         {subject.name}
                       </h3>
                       {subject.description && (
@@ -280,7 +280,7 @@ export default function SubjectsPage() {
                   e.stopPropagation();
                   openManageTopics(subject.id, subject.name);
                 }}
-                className="mt-4 inline-flex items-center text-xs font-bold uppercase tracking-widest text-accent transition-colors hover:underline"
+                className="mt-4 inline-flex items-center py-2 text-xs font-bold uppercase tracking-widest text-accent transition-colors hover:underline"
               >
                 MANAGE TOPICS
               </button>

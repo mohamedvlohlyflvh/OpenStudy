@@ -31,7 +31,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "relative flex h-screen flex-col border-r-2 border-border bg-bg transition-all duration-300",
+        "relative hidden h-screen flex-col border-r-2 border-border bg-bg transition-all duration-300 md:flex",
         sidebarOpen ? "w-60" : "w-16"
       )}
     >

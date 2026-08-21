@@ -217,7 +217,7 @@ export default function BundleCardsPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push("/bundles")}
-              className="flex h-10 w-10 items-center justify-center border-2 border-border text-muted-fg transition-colors hover:border-fg hover:text-fg"
+              className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-border text-muted-fg transition-colors hover:border-fg hover:text-fg"
               aria-label="Back to bundles"
             >
               <ArrowLeft size={18} />
@@ -238,7 +238,7 @@ export default function BundleCardsPage() {
               />
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={async () => {
                 try {
@@ -371,14 +371,14 @@ export default function BundleCardsPage() {
                           setEditTags(card.tags.map((t) => t.tag.name));
                         }}
                         aria-label="Edit"
-                        className="p-1.5 text-muted-fg transition-colors hover:bg-accent hover:text-accent-fg"
+                        className="p-2.5 text-muted-fg transition-colors hover:bg-accent hover:text-accent-fg"
                       >
                         <Pencil size={13} />
                       </button>
                       <button
                         onClick={() => setDeleteTarget(card)}
                         aria-label="Delete"
-                        className="p-1.5 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
+                        className="p-2.5 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
                       >
                         <Trash2 size={13} />
                       </button>

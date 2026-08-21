@@ -552,7 +552,7 @@ function FlashcardsContent() {
           )}
           <button
             onClick={() => router.push("/bundles")}
-            className="ml-auto text-xs font-bold uppercase tracking-widest text-muted-fg hover:text-accent"
+            className="ml-auto py-2 text-xs font-bold uppercase tracking-widest text-muted-fg hover:text-accent"
           >
             MANAGE BUNDLES →
           </button>
@@ -642,13 +642,13 @@ function FlashcardsContent() {
           </div>
 
           {/* Mode tabs (segmented) */}
-          <div className="flex gap-1 border-2 border-border">
+          <div className="flex gap-1 overflow-x-auto border-2 border-border">
             {(["review", "browse", "leeches", "stats"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
                 className={cn(
-                  "px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors",
+                  "shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors",
                   mode === m ? "bg-accent text-accent-fg" : "bg-bg text-muted-fg hover:text-fg"
                 )}
               >

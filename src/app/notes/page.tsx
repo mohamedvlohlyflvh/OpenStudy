@@ -134,14 +134,14 @@ export default function NotesPage() {
     <div className="p-8 lg:p-12">
       {/* Header */}
       <div className="mb-16">
-        <div className="flex items-end justify-between">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <RevealHeading text="NOTES" className="text-5xl lg:text-8xl" />
             <p className="mt-4 text-sm text-muted-fg uppercase tracking-widest">
               YOUR STUDY NOTES AND REFERENCE MATERIAL
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <NotebookLMExportButton
               notes={notes.map((n) => ({ title: n.title, content: n.content || "" }))}
             />
@@ -202,16 +202,16 @@ export default function NotesPage() {
                     </p>
                   )}
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                   <button
                     onClick={() => openEdit(note)}
-                    className="p-1 text-muted hover:text-accent transition-colors"
+                    className="p-2.5 text-muted hover:text-accent transition-colors"
                   >
                     <Pencil size={14} />
                   </button>
                   <button
                     onClick={() => handleTogglePin(note.id, note.isPinned)}
-                    className={`p-1 transition-colors ${
+                    className={`p-2.5 transition-colors ${
                       note.isPinned ? "text-accent" : "text-muted hover:text-fg"
                     }`}
                   >
@@ -219,7 +219,7 @@ export default function NotesPage() {
                   </button>
                   <button
                     onClick={() => handleDelete(note)}
-                    className="p-1 text-muted hover:text-danger transition-colors"
+                    className="p-2.5 text-muted hover:text-danger transition-colors"
                   >
                     <Trash2 size={14} />
                   </button>

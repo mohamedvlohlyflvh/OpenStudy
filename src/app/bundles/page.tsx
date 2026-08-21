@@ -212,7 +212,7 @@ export default function BundlesPage() {
                     }}
                     aria-label="Send to NotebookLM"
                     title="Send to NotebookLM"
-                    className="p-1.5 text-[13px] leading-none text-zinc-400 hover:text-yellow-400"
+                    className="p-2.5 text-[13px] leading-none text-zinc-400 hover:text-yellow-400"
                   >
                     📒
                   </button>
@@ -224,7 +224,7 @@ export default function BundlesPage() {
                     }}
                     aria-label="Import from NotebookLM"
                     title="Import from NotebookLM JSON"
-                    className="p-1.5 text-zinc-400 hover:text-yellow-400"
+                    className="p-2.5 text-zinc-400 hover:text-yellow-400"
                   >
                     <Download size={14} />
                   </button>
@@ -238,7 +238,7 @@ export default function BundlesPage() {
                       setEditColor(bundle.color);
                     }}
                     aria-label="Edit bundle"
-                    className="p-1.5 text-zinc-400 hover:text-yellow-400"
+                    className="p-2.5 text-zinc-400 hover:text-yellow-400"
                   >
                     <Pencil size={14} />
                   </button>
@@ -249,7 +249,7 @@ export default function BundlesPage() {
                       setDeleteTarget(bundle);
                     }}
                     aria-label="Delete bundle"
-                    className="p-1.5 text-zinc-400 hover:text-red-400"
+                    className="p-2.5 text-zinc-400 hover:text-red-400"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -280,7 +280,7 @@ export default function BundlesPage() {
                       e.preventDefault();
                       router.push(`/bundles/${bundle.id}/cards`);
                     }}
-                    className="text-xs font-bold uppercase tracking-widest text-yellow-400 hover:underline"
+                    className="py-2 text-xs font-bold uppercase tracking-widest text-yellow-400 hover:underline"
                   >
                     Manage cards
                   </button>

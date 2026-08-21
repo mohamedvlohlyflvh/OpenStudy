@@ -164,7 +164,7 @@ export default function SessionsPage() {
           <div
             className={`flex flex-col items-center justify-center gap-4 ${timerRunning && !timerPaused ? "shadow-[0_0_30px_rgba(225,255,0,0.05)]" : ""} rounded-xl w-full`}
           >
-            <p className={`font-mono tracking-wider text-6xl md:text-7xl font-extrabold text-white tabular-nums ${timerRunning && !timerPaused ? "text-yellow-300" : ""} transition-colors`}>
+            <p className={`font-mono tracking-wider text-4xl sm:text-6xl md:text-7xl font-extrabold text-white tabular-nums ${timerRunning && !timerPaused ? "text-yellow-300" : ""} transition-colors`}>
               {formatTimer(timerSeconds)}
             </p>
           </div>
@@ -267,7 +267,7 @@ export default function SessionsPage() {
                   <button
                     onClick={() => handleDeleteSession(session.id)}
                     aria-label="Delete session"
-                    className="p-1.5 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
+                    className="p-2.5 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
                   >
                     <Trash2 size={14} />
                   </button>

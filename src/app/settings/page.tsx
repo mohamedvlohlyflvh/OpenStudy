@@ -168,7 +168,7 @@ export default function SettingsPage() {
         <h2 className="mb-4 text-lg font-bold uppercase tracking-tighter text-fg">DATA MANAGEMENT</h2>
         <div className="space-y-3">
           <div className="border-2 border-border bg-bg p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold uppercase tracking-tight text-fg">EXPORT ALL DATA</p>
                 <p className="mt-1 text-xs text-muted-fg uppercase tracking-widest">DOWNLOAD A FULL BACKUP OF SUBJECTS, NOTES, CARDS, AND SESSIONS</p>
@@ -180,7 +180,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="border-2 border-border bg-bg p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold uppercase tracking-tight text-fg">IMPORT DATA</p>
                 <p className="mt-1 text-xs text-muted-fg uppercase tracking-widest">RESTORE FROM A STUDYMAX BACKUP FILE</p>
