@@ -4,10 +4,16 @@ import { Sidebar } from "@/components/sidebar";
 import { BottomNav } from "@/components/bottom-nav";
 import { UndoToastHost } from "@/components/undo-toast";
 import { ThemeEffects } from "@/components/theme-effects";
+import { SwRegister } from "@/components/sw-register";
 
 export const metadata: Metadata = {
   title: "StudyMax — Learn Smarter",
   description: "Full-stack study management with spaced repetition, notes, and progress tracking.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/icon-192.png",
+  },
 };
 
 export const viewport: Viewport = {
@@ -42,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <BottomNav />
         <UndoToastHost />
         <ThemeEffects />
+        <SwRegister />
       </body>
     </html>
   );
