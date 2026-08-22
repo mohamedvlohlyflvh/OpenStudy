@@ -169,12 +169,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ─── Utility: shimmering skeleton ────────────────────────────── */
+/* ─── Utility: shimmering skeleton ──────────────────────────────
+   Highlight is derived from theme tokens (muted mixed toward fg),
+   so it tracks every data-theme — no hardcoded grey. */
 @utility skeleton {
   background: linear-gradient(
     90deg,
     var(--color-muted) 25%,
-    #242428 37%,
+    color-mix(in srgb, var(--color-muted) 65%, var(--color-fg)) 37%,
     var(--color-muted) 63%
   );
   background-size: 200% 100%;

@@ -227,7 +227,7 @@ export default function SubjectsPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <div
-                      className="flex h-16 w-16 shrink-0 items-center justify-center text-2xl font-bold uppercase transition-colors duration-200 bg-[var(--chip)] text-[var(--chip-text)] group-hover:bg-black group-hover:text-[#DFE104] hover:bg-black hover:text-[#DFE104]"
+                      className="flex h-16 w-16 shrink-0 items-center justify-center text-2xl font-bold uppercase transition-colors duration-200 bg-[var(--chip)] text-[var(--chip-text)] group-hover:bg-black group-hover:text-[var(--color-accent)] hover:bg-black hover:text-[var(--color-accent)]"
                       style={{
                         ["--chip" as string]: subject.color || "#DFE104",
                         ["--chip-text" as string]: readableOn(subject.color || "#DFE104"),
