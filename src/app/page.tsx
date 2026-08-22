@@ -17,6 +17,7 @@ import { QuickNavShelf } from "@/components/quick-nav-shelf";
 import { getDashboardStats } from "./actions";
 import { formatDuration } from "@/lib/utils";
 import { StudyAllDueButton } from "@/components/study-all-due-button";
+import { PageLoader } from "@/components/page-loader";
 
 type DashboardStats = Awaited<ReturnType<typeof getDashboardStats>>;
 
@@ -28,26 +29,7 @@ export default function DashboardPage() {
   }, []);
 
   if (!stats) {
-    return (
-      <div className="p-8 lg:p-12">
-        <div className="relative mb-16">
-          <RevealHeading text="DASHBOARD" className="text-5xl lg:text-8xl" />
-          <ScrambleSubtitle
-            text="YOUR LEARNING OVERVIEW AT A GLANCE"
-            className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex h-48 items-center justify-center border-2 border-border bg-bg">
-              <span className="text-xs font-bold uppercase tracking-widest text-muted-fg animate-pulse">
-                LOADING
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    return <PageLoader variant="dashboard" titleW="w-56" />;
   }
 
   const statCards = [
