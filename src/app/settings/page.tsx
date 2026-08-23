@@ -3,18 +3,25 @@
 import { useState, useRef } from "react";
 import { useAppStore, type ThemeName } from "@/lib/store";
 import { RevealHeading } from "@/components/reveal-heading";
+import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { exportAllData, importAllData } from "@/app/actions";
 import { Download, Upload, Check, AlertTriangle } from "lucide-react";
 
 const THEMES: { id: ThemeName; name: string; bg: string; accent: string; fg: string }[] = [
-  { id: "onyx", name: "ONYX", bg: "#000000", accent: "#FACC15", fg: "#FFFFFF" },
-  { id: "void", name: "VOID", bg: "#05060e", accent: "#6EA8FE", fg: "#E7ECFF" },
-  { id: "emerald", name: "EMERALD", bg: "#02100b", accent: "#34D399", fg: "#E7FFF4" },
-  { id: "magma", name: "MAGMA", bg: "#120606", accent: "#FB7185", fg: "#FFE9E3" },
-  { id: "grape", name: "GRAPE", bg: "#0c0712", accent: "#C084FC", fg: "#F3E9FF" },
-  { id: "light", name: "LIGHT", bg: "#f4f4f5", accent: "#CA8A04", fg: "#09090B" },
+  { id: "aurora", name: "Aurora", bg: "#0B0F17", accent: "#FF5E57", fg: "#E7EDF7" },
+  { id: "midnight", name: "Midnight", bg: "#030712", accent: "#60A5FA", fg: "#E4EDFF" },
+  { id: "nebula", name: "Nebula", bg: "#0D0716", accent: "#C084FC", fg: "#F2E9FF" },
+  { id: "matrix", name: "Matrix", bg: "#02100B", accent: "#34D399", fg: "#E4FFF1" },
+  { id: "ember", name: "Ember", bg: "#140808", accent: "#FB923C", fg: "#FFF0E7" },
+  { id: "rosewood", name: "Rosewood", bg: "#12070C", accent: "#FB7185", fg: "#FFEAF1" },
+  { id: "cyberpunk", name: "Cyberpunk", bg: "#0A0A12", accent: "#FCEE0A", fg: "#F2F2FF" },
+  { id: "arctic", name: "Arctic", bg: "#07111E", accent: "#38BDF8", fg: "#E8F6FF" },
+  { id: "sandstone", name: "Sandstone", bg: "#151210", accent: "#E8B45C", fg: "#F7EFE3" },
+  { id: "mono", name: "Mono", bg: "#09090B", accent: "#FFFFFF", fg: "#FAFAFA" },
+  { id: "light", name: "Light", bg: "#F1F5F9", accent: "#B91C1C", fg: "#0F172A" },
+  { id: "paper", name: "Paper", bg: "#FAF7F2", accent: "#9A3412", fg: "#292018" },
 ];
 
 function Toggle({
@@ -105,7 +112,10 @@ export default function SettingsPage() {
     <div className="p-8 lg:p-12">
       <div className="mb-8">
         <RevealHeading text="SETTINGS" className="text-4xl lg:text-6xl" />
-        <p className="mt-2 text-sm text-muted-fg uppercase tracking-widest">APPEARANCE & PREFERENCES</p>
+        <ScrambleSubtitle
+          text="APPEARANCE & PREFERENCES"
+          className="mt-2 text-sm text-muted-fg uppercase tracking-widest"
+        />
       </div>
 
       {/* Theme */}

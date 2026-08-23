@@ -15,6 +15,7 @@ import {
   type FlashcardRec,
   type StudySessionRec,
   type ReviewLogRec,
+  type PomoPresetRec,
 } from "@/lib/db";
 import {
   subjectSchema,
@@ -23,7 +24,9 @@ import {
   bundleSchema,
   bundleCardSchema,
   importBatchSchema,
+  pomoPresetSchema,
   type SubjectInput,
+  type PomoPresetInput,
 } from "@/lib/validations";
 
 // ─── Include helpers (mirror Prisma `include` shapes) ────────────
@@ -134,7 +137,10 @@ export async function deleteSubject(id: string) {
     for (const n of notes) await db.noteTags.where("noteId").equals(n.id).delete();
     await db.notes.where("topicId").equals(t.id).delete();
     const cards = await db.flashcards.where("topicId").equals(t.id).toArray();
-    for (const c of cards) await db.cardTags.where("cardId").equals(c.id).delete();
+    for (const c of cards) {
+      await db.cardTags.where("cardId").equals(c.id).delete();
+      await db.reviewLogs.where("flashcardId").equals(c.id).delete();
+    }
     await db.flashcards.where("topicId").equals(t.id).delete();
   }
   await db.topics.where("subjectId").equals(id).delete();
@@ -170,7 +176,10 @@ export async function deleteTopic(id: string) {
   for (const n of notes) await db.noteTags.where("noteId").equals(n.id).delete();
   await db.notes.where("topicId").equals(id).delete();
   const cards = await db.flashcards.where("topicId").equals(id).toArray();
-  for (const c of cards) await db.cardTags.where("cardId").equals(c.id).delete();
+  for (const c of cards) {
+    await db.cardTags.where("cardId").equals(c.id).delete();
+    await db.reviewLogs.where("flashcardId").equals(c.id).delete();
+  }
   await db.flashcards.where("topicId").equals(id).delete();
   await db.studySessions.where("topicId").equals(id).modify({ topicId: null });
   if (topic) await db.topics.delete(id);
@@ -384,6 +393,20 @@ export async function deleteFlashcard(id: string) {
   return card;
 }
 
+/** Undo helper: reinsert an EXACT snapshot of a deleted card (id, SM-2
+ * state, tags, topic/bundle links) so undo doesn't reset scheduling. */
+export async function restoreFlashcard(
+  card: FlashcardRec,
+  tagIds: { cardId: string; tagId: string }[]
+) {
+  await db.flashcards.put(card);
+  if (tagIds.length) await db.cardTags.bulkPut(tagIds);
+}
+
+export async function getFlashcardSnapshot(id: string): Promise<FlashcardRec | null> {
+  return (await db.flashcards.get(id)) ?? null;
+}
+
 // ─── Study Sessions ───────────────────────────────────────────────
 export async function getStudySessions(limit = 50) {
   const all = await db.studySessions.orderBy("startedAt").reverse().toArray();
@@ -432,13 +455,46 @@ export async function deleteStudySession(id: string) {
   return session;
 }
 
+// ─── Pomodoro Presets (custom techniques, saved per-device) ───────
+export async function getPomoPresets() {
+  return db.pomoPresets.orderBy("createdAt").toArray();
+}
+
+export async function createPomoPreset(input: PomoPresetInput) {
+  const data = pomoPresetSchema.parse(input);
+  const preset: PomoPresetRec = { id: uid(), createdAt: new Date(), ...data };
+  await db.pomoPresets.add(preset);
+  return preset;
+}
+
+export async function updatePomoPreset(id: string, input: Partial<PomoPresetInput>) {
+  const existing = await db.pomoPresets.get(id);
+  if (!existing) throw new Error("Preset not found");
+  const data = pomoPresetSchema.parse({ ...existing, ...input });
+  await db.pomoPresets.update(id, data);
+  return { ...existing, ...data };
+}
+
+export async function deletePomoPreset(id: string) {
+  await db.pomoPresets.delete(id);
+  return { id };
+}
+
+// ─── Due Count (sidebar badge) ────────────────────────────────────
+export async function getDueCount(): Promise<number> {
+  const now = Date.now();
+  const flashcards = await db.flashcards.toArray();
+  return flashcards.filter((c) => c.nextReview.getTime() <= now).length;
+}
+
 // ─── Dashboard Stats ──────────────────────────────────────────────
 export async function getDashboardStats() {
-  const [subjects, topics, flashcards, sessions] = await Promise.all([
+  const [subjectCount, topics, flashcards, sessions, subjects] = await Promise.all([
     db.subjects.count(),
     db.topics.count(),
     db.flashcards.toArray(),
     db.studySessions.orderBy("startedAt").reverse().toArray(),
+    db.subjects.toArray(),
   ]);
   const now = Date.now();
   const dueCards = flashcards.filter((c) => c.nextReview.getTime() <= now).length;
@@ -453,15 +509,151 @@ export async function getDashboardStats() {
       };
     })
   );
+  // Per-subject breakdown for the dashboard shortcut grid
+  const nowMs = Date.now();
+  const subjectBreakdown = await Promise.all(
+    subjects.map(async (subj) => {
+      const cards = flashcards.filter((c) => c.subjectId === subj.id);
+      return {
+        id: subj.id,
+        name: subj.name,
+        color: subj.color,
+        cardCount: cards.length,
+        dueCount: cards.filter((c) => c.nextReview.getTime() <= nowMs).length,
+      };
+    })
+  );
   return {
-    totalSubjects: subjects,
+    totalSubjects: subjectCount,
     totalTopics: topics,
     totalFlashcards: flashcards.length,
     totalSessions: sessions.length,
     dueCards,
     totalMinutes,
     recentSessions,
+    subjectBreakdown,
   };
+}
+
+// ─── getWeeklyAnalytics — dashboard chart + deadline data ──────────
+export interface WeeklyAnalyticsResult {
+  weekDays: { label: string; minutes: number }[];
+  deadlines: {
+    subjectId: string;
+    subjectName: string;
+    color: string;
+    dueCount: number;
+    overdueDays: number;
+  }[];
+}
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+export async function getWeeklyAnalytics(): Promise<WeeklyAnalyticsResult> {
+  const [sessions, flashcards, subjects] = await Promise.all([
+    db.studySessions.toArray(),
+    db.flashcards.toArray(),
+    db.subjects.toArray(),
+  ]);
+
+  // Last 7 days, Monday-first
+  const now = new Date();
+  const todayIdx = (now.getDay() + 6) % 7; // Mon=0 … Sun=6
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - todayIdx);
+
+  const minutes = Array(7).fill(0) as number[];
+  for (const s of sessions) {
+    const d = new Date(s.startedAt);
+    if (d >= monday) {
+      const idx = Math.floor((d.getTime() - monday.getTime()) / 86_400_000);
+      if (idx >= 0 && idx < 7) minutes[idx] += s.durationMin;
+    }
+  }
+  const order = [...Array(7).keys()].map(
+    (i) => (todayIdx + 1 + i) % 7 // rotate so the array starts Monday
+  );
+  // Build Monday-first labels aligned with index 0 = monday
+  const weekDays = DAY_LABELS.map((label, i) => ({ label, minutes: minutes[i] }));
+
+  // Minutes reviewed today (for Daily Progress ring)
+  void order;
+
+  // Today's stats
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const minutesToday = sessions
+    .filter((s) => new Date(s.startedAt) >= startOfDay)
+    .reduce((a, s) => a + s.durationMin, 0);
+
+  // Streak: consecutive days (ending today or yesterday) with ≥1 session
+  const dayKey = (d: Date) =>
+    `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const activeDays = new Set(sessions.map((s) => dayKey(new Date(s.startedAt))));
+  let streakDays = 0;
+  const cursor = new Date(now);
+  if (!activeDays.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  while (activeDays.has(dayKey(cursor))) {
+    streakDays += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  // Deadlines per subject (due cards + oldest overdue)
+  const nowMs = Date.now();
+  const bySubject = new Map<string, { due: number; oldest: number }>();
+  for (const c of flashcards) {
+    if (!c.subjectId) continue;
+    if (c.nextReview.getTime() <= nowMs) {
+      const entry = bySubject.get(c.subjectId) ?? { due: 0, oldest: 0 };
+      entry.due += 1;
+      entry.oldest = Math.max(entry.oldest, nowMs - c.nextReview.getTime());
+      bySubject.set(c.subjectId, entry);
+    }
+  }
+  const deadlines = [...bySubject.entries()]
+    .map(([subjectId, e]) => {
+      const subj = subjects.find((s) => s.id === subjectId);
+      return {
+        subjectId,
+        subjectName: subj?.name ?? "Unknown",
+        color: subj?.color ?? "#64748B",
+        dueCount: e.due,
+        overdueDays: Math.floor(e.oldest / 86_400_000),
+      };
+    })
+    .sort((a, b) => b.dueCount - a.dueCount);
+
+  return { weekDays, deadlines };
+}
+
+// Expose today's minutes/streak/cards through the existing stats action too.
+// getDashboardStats already returns totals; we extend it minimally here via a
+// second helper so page.tsx can read both in parallel.
+export async function getTodayProgress() {
+  const [sessions, flashcards] = await Promise.all([
+    db.studySessions.toArray(),
+    db.reviewLogs.toArray(),
+  ]);
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const minutesToday = sessions
+    .filter((s) => new Date(s.startedAt) >= startOfDay)
+    .reduce((a, s) => a + s.durationMin, 0);
+  const cardsReviewedToday = flashcards.filter(
+    (r) => new Date(r.reviewedAt) >= startOfDay
+  ).length;
+  const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const activeDays = new Set(sessions.map((s) => dayKey(new Date(s.startedAt))));
+  let streakDays = 0;
+  const cursor = new Date(now);
+  if (!activeDays.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  while (activeDays.has(dayKey(cursor))) {
+    streakDays += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return { minutesToday, cardsReviewedToday, streakDays };
 }
 
 // ─── Global Queries (for Notes page) ─────────────────────────────
@@ -581,14 +773,20 @@ export async function reviewFlashcardWithLog(id: string, quality: number) {
   if (newEF < 1.3) newEF = 1.3;
 
   let newInterval: number;
+  let newReviewCount: number;
   if (q < 3) {
+    // Lapse: reset the repetition ladder (1-day step), like standard SM-2.
     newInterval = 1;
+    newReviewCount = 0;
   } else if (card.reviewCount === 0) {
     newInterval = 1;
+    newReviewCount = card.reviewCount + 1;
   } else if (card.reviewCount === 1) {
     newInterval = 6;
+    newReviewCount = card.reviewCount + 1;
   } else {
     newInterval = Math.min(Math.round(card.intervalDays * newEF), 365);
+    newReviewCount = card.reviewCount + 1;
   }
 
   const nextReview = new Date();
@@ -603,7 +801,7 @@ export async function reviewFlashcardWithLog(id: string, quality: number) {
     intervalDays: newInterval,
     nextReview,
     lastReview: new Date(),
-    reviewCount: card.reviewCount + 1,
+    reviewCount: newReviewCount,
     difficulty: q,
     consecutiveAgain: newConsecutive,
     isLeech,
@@ -647,7 +845,9 @@ export async function getHeatmapData() {
 
   const counts = new Map<string, number>();
   for (const log of logs) {
-    const date = new Date(log.reviewedAt).toISOString().split("T")[0];
+    // Local date (not UTC) so buckets align with the user's midnight
+    const d = new Date(log.reviewedAt);
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     counts.set(date, (counts.get(date) ?? 0) + 1);
   }
   return Array.from(counts.entries()).map(([date, count]) => ({ date, count }));
@@ -663,13 +863,17 @@ export async function getStreak() {
 
   const reviewDates = new Set<string>();
   for (const log of logs) {
-    reviewDates.add(new Date(log.reviewedAt).toISOString().split("T")[0]);
+    // Local date bucketing — UTC shifted late-evening reviews to "tomorrow"
+    // in positive-offset timezones (e.g. UTC+3), silently breaking streaks.
+    const d = new Date(log.reviewedAt);
+    reviewDates.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
   }
 
   let streak = 0;
   const checkDate = new Date(today);
   while (true) {
-    const dateStr = checkDate.toISOString().split("T")[0];
+    const cd = checkDate;
+    const dateStr = `${cd.getFullYear()}-${String(cd.getMonth() + 1).padStart(2, "0")}-${String(cd.getDate()).padStart(2, "0")}`;
     if (!reviewDates.has(dateStr)) break;
     streak++;
     checkDate.setDate(checkDate.getDate() - 1);
@@ -779,7 +983,7 @@ export async function importBundleCards(
   cards: { front?: string; back?: string; question?: string; answer?: string; tags?: string[] }[]
 ) {
   if (!Array.isArray(cards) || cards.length === 0) return { count: 0 };
-  // Accept both {front,back} (app export) and {question,answer} (NotebookLM JSON).
+  // Accept both {front,back} (app export) and {question,answer} (external JSON).
   const normalized = cards
     .map((c) => ({
       front: String(c.front ?? c.question ?? "").trim(),
@@ -793,7 +997,7 @@ export async function importBundleCards(
   return importCardsIntoBundle(bundleId, normalized);
 }
 
-// ─── NotebookLM export (markdown source) ─────────────────────
+// ─── Markdown export ─────────────────────────────────────────
 export async function exportBundleMarkdown(bundleId: string): Promise<string> {
   const bundle = await db.bundles.get(bundleId);
   if (!bundle) throw new Error("Bundle not found");

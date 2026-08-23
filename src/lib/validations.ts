@@ -93,6 +93,18 @@ export const bundleCardSchema = z.object({
 
 export type BundleCardInput = z.infer<typeof bundleCardSchema>;
 
+// ─── Pomodoro Preset ─────────────────────────────────────────────
+export const pomoPresetSchema = z.object({
+  name: z.string().min(1, "Preset name is required").max(50),
+  workMin: z.number().int().min(1).max(180),
+  breakMin: z.number().int().min(1).max(60),
+  longBreakMin: z.number().int().min(0).max(90).default(0),
+  cyclesBeforeLongBreak: z.number().int().min(0).max(12).default(0),
+  autoAdvance: z.boolean().default(true),
+});
+
+export type PomoPresetInput = z.infer<typeof pomoPresetSchema>;
+
 // ─── Parsed import row (CSV/Anki/JSON) ────────────────────────────
 export const importRowSchema = z.object({
   front: z.string().min(1).max(2000),

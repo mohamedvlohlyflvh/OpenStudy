@@ -9,8 +9,7 @@ export function parseCardsFile(raw: string): { front: string; back: string; tags
   let trimmed = raw.trim();
   if (!trimmed) return [];
 
-  // Strip markdown code fences (```json ... ```) — LLM replies (e.g. NotebookLM)
-  // commonly wrap the JSON array in fences.
+  // Strip markdown code fences — LLM replies commonly wrap the JSON array in fences.
   const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   if (fenceMatch) {
     trimmed = fenceMatch[1].trim();

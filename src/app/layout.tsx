@@ -5,6 +5,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { UndoToastHost } from "@/components/undo-toast";
 import { ThemeEffects } from "@/components/theme-effects";
 import { SwRegister } from "@/components/sw-register";
+import { PageTransition } from "@/components/page-transition";
 
 export const metadata: Metadata = {
   title: "StudyMax — Learn Smarter",
@@ -17,32 +18,36 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090B",
+  themeColor: "#0B0F17",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* No-flash theme script: a plain inline <script> server-rendered into
-            <head>. It runs before hydration so the persisted theme is applied
-            with no flash. Because it is a raw <script> in a Server Component,
-            Next emits it as static HTML — it is never reconciled by React on the
-            client, so React 19 does not warn about a script tag during render
-            (the fate of next/script's `beforeInteractive` strategy here). */}
+        {/* No-flash theme script. Runs before hydration; also maps legacy
+            v1 theme names (onyx/void/emerald/magma/grape) to their v2
+            equivalents so old localStorage prefs keep working. */}
         <script
           id="theme-init"
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){try{var p=localStorage.getItem('study-prefs');var t=p?JSON.parse(p).theme:'onyx';document.documentElement.setAttribute('data-theme',t||'onyx');}catch(e){document.documentElement.setAttribute('data-theme','onyx');}})();",
+              "(function(){try{var p=localStorage.getItem('study-prefs');var t=p?JSON.parse(p).theme:'aurora';" +
+              "var map={onyx:'mono',void:'midnight',emerald:'matrix',magma:'ember',grape:'nebula'};" +
+              "if(map[t]){t=map[t];try{var o=JSON.parse(p);o.theme=t;localStorage.setItem('study-prefs',JSON.stringify(o));}catch(e){}}" +
+              "if(!['aurora','midnight','nebula','matrix','ember','rosewood','cyberpunk','arctic','sandstone','mono','light','paper'].includes(t))t='aurora';" +
+              "document.documentElement.setAttribute('data-theme',t||'aurora');}catch(e){document.documentElement.setAttribute('data-theme','aurora');}})();",
           }}
         />
       </head>
       <body className="bg-bg text-fg antialiased">
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
-          <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-            {children}
+          <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+            <PageTransition>{children}</PageTransition>
           </main>
         </div>
         <BottomNav />

@@ -24,13 +24,28 @@ interface TilePalette {
   mutedFg: string;     // secondary / mono captions
 }
 
-const TILE_PALETTES: Record<ThemeName, TilePalette> = {
-  onyx:    { canvas: "#0A0A0B", surface: "#18181B", border: "#27272A", borderStrong: "#3F3F46", accent: "#FACC15", accentDark: "#A16207", accentFg: "#09090B", fg: "#FAFAFA", mutedFg: "#A1A1AA" },
-  void:    { canvas: "#0A0D1F", surface: "#11142A", border: "#1E2238", borderStrong: "#2C3352", accent: "#6EA8FE", accentDark: "#1E3A8A", accentFg: "#05060E", fg: "#E7ECFF", mutedFg: "#8B93B8" },
-  emerald: { canvas: "#04180F", surface: "#06241A", border: "#0C3B2B", borderStrong: "#14532D", accent: "#34D399", accentDark: "#065F46", accentFg: "#02100B", fg: "#E7FFF4", mutedFg: "#7FBFA6" },
-  magma:   { canvas: "#1A0909", surface: "#271010", border: "#3A1818", borderStrong: "#57201F", accent: "#FB7185", accentDark: "#9F1239", accentFg: "#120606", fg: "#FFE9E3", mutedFg: "#C99B8F" },
-  grape:   { canvas: "#120A1C", surface: "#1A1228", border: "#2A1D3E", borderStrong: "#3B2A58", accent: "#C084FC", accentDark: "#6B21A8", accentFg: "#0C0712", fg: "#F3E9FF", mutedFg: "#B09BC8" },
-  light:   { canvas: "#FFFFFF", surface: "#E4E4E7", border: "#D4D4D8", borderStrong: "#A1A1AA", accent: "#854D0E", accentDark: "#57330A", accentFg: "#FFFFFF", fg: "#09090B", mutedFg: "#52525B" },
+const TILE_PALETTES: Partial<Record<ThemeName, TilePalette>> = {
+  aurora:    { canvas: "#0B0F17", surface: "#1F293D", border: "rgba(255,255,255,0.08)", borderStrong: "rgba(255,255,255,0.18)", accent: "#FF5E57", accentDark: "#C43D37", accentFg: "#1A0505", fg: "#E7EDF7", mutedFg: "#94A3B8" },
+  midnight:  { canvas: "#030712", surface: "#16233B", border: "rgba(147,180,255,0.10)", borderStrong: "rgba(147,180,255,0.22)", accent: "#60A5FA", accentDark: "#1D4ED8", accentFg: "#030A1A", fg: "#E4EDFF", mutedFg: "#8CA3C7" },
+  nebula:    { canvas: "#0D0716", surface: "#241738", border: "rgba(192,132,252,0.12)", borderStrong: "rgba(192,132,252,0.25)", accent: "#C084FC", accentDark: "#7E22CE", accentFg: "#150A26", fg: "#F2E9FF", mutedFg: "#A794C4" },
+  matrix:    { canvas: "#02100B", surface: "#06281A", border: "rgba(52,211,153,0.12)", borderStrong: "rgba(52,211,153,0.25)", accent: "#34D399", accentDark: "#047857", accentFg: "#02120A", fg: "#E4FFF1", mutedFg: "#7FBFA2" },
+  ember:     { canvas: "#140808", surface: "#2C1512", border: "rgba(251,146,60,0.12)", borderStrong: "rgba(251,146,60,0.25)", accent: "#FB923C", accentDark: "#C2410C", accentFg: "#1A0A02", fg: "#FFF0E7", mutedFg: "#C99B8A" },
+  rosewood:  { canvas: "#12070C", surface: "#2A121C", border: "rgba(251,113,133,0.12)", borderStrong: "rgba(251,113,133,0.25)", accent: "#FB7185", accentDark: "#BE123C", accentFg: "#1A060B", fg: "#FFEAF1", mutedFg: "#C793A8" },
+  cyberpunk: { canvas: "#0A0A12", surface: "#181828", border: "rgba(252,238,10,0.14)", borderStrong: "rgba(252,238,10,0.28)", accent: "#FCEE0A", accentDark: "#A39006", accentFg: "#12120A", fg: "#F2F2FF", mutedFg: "#8F92B8" },
+  arctic:    { canvas: "#07111E", surface: "#12263C", border: "rgba(56,189,248,0.12)", borderStrong: "rgba(56,189,248,0.25)", accent: "#38BDF8", accentDark: "#0369A1", accentFg: "#04121E", fg: "#E8F6FF", mutedFg: "#8FB0C9" },
+  sandstone: { canvas: "#151210", surface: "#2A231D", border: "rgba(232,180,92,0.14)", borderStrong: "rgba(232,180,92,0.28)", accent: "#E8B45C", accentDark: "#92641B", accentFg: "#1A1206", fg: "#F7EFE3", mutedFg: "#B8A68D" },
+  mono:      { canvas: "#09090B", surface: "#1B1B1F", border: "rgba(255,255,255,0.09)", borderStrong: "rgba(255,255,255,0.2)", accent: "#FFFFFF", accentDark: "#71717A", accentFg: "#09090B", fg: "#FAFAFA", mutedFg: "#A1A1AA" },
+  light:     { canvas: "#FFFFFF", surface: "#E2E8F0", border: "rgba(15,23,42,0.10)", borderStrong: "rgba(15,23,42,0.22)", accent: "#B91C1C", accentDark: "#7F1D1D", accentFg: "#FFFFFF", fg: "#0F172A", mutedFg: "#475569" },
+  paper:     { canvas: "#FAF7F2", surface: "#EFE9DF", border: "rgba(41,32,24,0.12)", borderStrong: "rgba(41,32,24,0.25)", accent: "#9A3412", accentDark: "#7C2D12", accentFg: "#FFFFFF", fg: "#292018", mutedFg: "#6E604E" },
+};
+
+// Legacy names → v2 (in case a caller still passes an old id)
+const LEGACY_THEME: Record<string, ThemeName> = {
+  onyx: "mono",
+  void: "midnight",
+  emerald: "matrix",
+  magma: "rosewood",
+  grape: "nebula",
 };
 
 function tileSvg(id: string, p: TilePalette, body: string): string {
@@ -103,7 +118,13 @@ export function QuickNavShelf() {
   const [coarse, setCoarse] = useState(false);
 
   // Rebuild the SVG tiles only when the theme changes.
-  const tiles = useMemo(() => buildTiles(TILE_PALETTES[theme] ?? TILE_PALETTES.onyx), [theme]);
+  const tiles = useMemo(
+    () =>
+      buildTiles(
+        TILE_PALETTES[LEGACY_THEME[theme] ?? theme] ?? TILE_PALETTES.aurora!
+      ),
+    [theme]
+  );
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");

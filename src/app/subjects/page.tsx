@@ -4,9 +4,11 @@ import { useState, useEffect, useTransition } from "react";
 import { Plus, Trash2, BookOpen, Pencil } from "lucide-react";
 import { Card, Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
+import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { getSubjects, createSubject, deleteSubject, createTopic, getTopics, updateTopic, deleteTopic, updateSubject } from "@/app/actions";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { readableOn } from "@/lib/utils";
+import { tiltHandlers } from "@/lib/interactions";
 
 type Subject = Awaited<ReturnType<typeof getSubjects>>[number];
 
@@ -173,9 +175,10 @@ export default function SubjectsPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <RevealHeading text="SUBJECTS" className="text-5xl lg:text-8xl" />
-            <p className="mt-4 text-sm text-muted-fg uppercase tracking-widest">
-              ORGANIZE YOUR LEARNING TOPICS
-            </p>
+            <ScrambleSubtitle
+              text="ORGANIZE YOUR LEARNING TOPICS"
+              className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
+            />
           </div>
           <Button onClick={() => setModalOpen(true)}>
             <Plus size={16} />
@@ -222,7 +225,8 @@ export default function SubjectsPage() {
             <Card
               key={subject.id}
               hover
-              className="group relative"
+              {...tiltHandlers(5)}
+              className="group relative will-change-transform"
             >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4 flex-1 min-w-0">

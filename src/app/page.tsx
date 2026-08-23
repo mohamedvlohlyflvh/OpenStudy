@@ -1,176 +1,221 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import {
   BookOpen,
   Brain,
   Clock,
+  Layers,
+  Sparkles,
   StickyNote,
   Zap,
-  TrendingUp,
 } from "lucide-react";
-import Marquee from "react-fast-marquee";
-import { Card, Badge } from "@/components/ui";
-import { RevealHeading } from "@/components/reveal-heading";
-import { ScrambleSubtitle } from "@/components/scramble-subtitle";
-import { QuickNavShelf } from "@/components/quick-nav-shelf";
-import { getDashboardStats } from "./actions";
-import { formatDuration } from "@/lib/utils";
-import { StudyAllDueButton } from "@/components/study-all-due-button";
+import Link from "next/link";
+import { Card, CountUp, StudyAllDueButton } from "@/components/dashboard-parts";
+import { TopBar } from "@/components/topbar";
+import { FocusZone } from "@/components/focus-zone";
+import { DailyProgress } from "@/components/daily-progress";
+import { WeeklyAnalytics } from "@/components/weekly-analytics";
+import { DeadlineList } from "@/components/deadline-list";
 import { PageLoader } from "@/components/page-loader";
+import { getDashboardStats, getTodayProgress, getWeeklyAnalytics } from "./actions";
+import { formatDuration } from "@/lib/utils";
 
-type DashboardStats = Awaited<ReturnType<typeof getDashboardStats>>;
+type Stats = Awaited<ReturnType<typeof getDashboardStats>>;
+type Weekly = Awaited<ReturnType<typeof getWeeklyAnalytics>>;
+type Today = Awaited<ReturnType<typeof getTodayProgress>>;
+
+// Spring spec per DESIGN.md §7
+const SPRING = { type: "spring" as const, stiffness: 260, damping: 20 };
+
+const container = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: SPRING },
+};
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [weekly, setWeekly] = useState<Weekly | null>(null);
+  const [today, setToday] = useState<Today | null>(null);
 
   useEffect(() => {
     getDashboardStats().then(setStats);
+    getWeeklyAnalytics().then(setWeekly);
+    getTodayProgress().then(setToday);
   }, []);
 
   if (!stats) {
     return <PageLoader variant="dashboard" titleW="w-56" />;
   }
 
-  const statCards = [
-    { label: "SUBJECTS", value: stats.totalSubjects, icon: <BookOpen size={20} /> },
-    { label: "TOPICS", value: stats.totalTopics, icon: <StickyNote size={20} /> },
-    { label: "FLASHCARDS", value: stats.totalFlashcards, icon: <Brain size={20} /> },
-    { label: "DUE", value: stats.dueCards, icon: <Zap size={20} /> },
-    { label: "SESSIONS", value: stats.totalSessions, icon: <TrendingUp size={20} /> },
-    { label: "STUDY TIME", value: formatDuration(stats.totalMinutes), icon: <Clock size={20} /> },
-  ];
+  const todayData = today ?? { cardsReviewedToday: 0, minutesToday: 0, streakDays: 0 };
 
   return (
-    <div className="p-8 lg:p-12">
-      {/* Hero Section */}
-      <div className="relative mb-16">
-        <RevealHeading
-          text="DASHBOARD"
-          className="text-5xl lg:text-8xl"
-        />
-        <ScrambleSubtitle
-          text="YOUR LEARNING OVERVIEW AT A GLANCE"
-          className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
-        />
-      </div>
+    <div className="p-6 lg:p-10">
+      <TopBar dueCards={stats.dueCards} />
 
-      {/* Due Cards Alert */}
-      {stats.dueCards > 0 && (
-        <div className="mb-8 rise-in border-2 border-accent bg-accent animate-[pulse-border_2s_ease-in-out_infinite]">
-          <div className="flex flex-wrap items-center justify-between gap-4 p-6">
-            <div className="flex items-center gap-4">
-              <Zap size={24} className="text-accent-fg" />
-              <div>
-                <p className="text-xl font-bold uppercase tracking-tighter text-accent-fg">
-                  {stats.dueCards} FLASHCARD{stats.dueCards !== 1 && "S"} DUE
-                </p>
-                <p className="text-sm text-accent-fg/70">
-                  KEEP YOUR SPACED REPETITION STREAK GOING
+      <motion.div variants={container} initial="hidden" animate="show">
+        {/* Due alert */}
+        {stats.dueCards > 0 && (
+          <motion.div variants={item}>
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-accent/40 bg-accent-soft px-6 py-4 animate-[pulse-border_2s_ease-in-out_infinite]">
+              <div className="flex items-center gap-3">
+                <Zap size={20} className="text-accent" aria-hidden />
+                <p className="text-sm font-bold tracking-tight text-fg">
+                  {stats.dueCards} card{stats.dueCards === 1 ? "" : "s"} ready for review —
+                  keep the streak alive.
                 </p>
               </div>
+              <StudyAllDueButton />
             </div>
-            <StudyAllDueButton />
-          </div>
+          </motion.div>
+        )}
+
+        {/* Hero grid: Focus Zone + Daily Progress */}
+        <div className="mb-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
+          <motion.div variants={item} className="lg:col-span-2">
+            <FocusZone />
+          </motion.div>
+
+          <motion.div variants={item} className="space-y-6 lg:col-span-3">
+            <DailyProgress
+              data={{
+                cardsReviewed: todayData.cardsReviewedToday,
+                cardsGoal: 30,
+                minutesToday: todayData.minutesToday,
+                minutesGoal: 60,
+                streakDays: todayData.streakDays,
+              }}
+            />
+
+            {/* Stat strip */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {[
+                { label: "Subjects", value: stats.totalSubjects, icon: BookOpen },
+                { label: "Topics", value: stats.totalTopics, icon: Layers },
+                { label: "Cards", value: stats.totalFlashcards, icon: Brain },
+                { label: "Study time", value: formatDuration(stats.totalMinutes), icon: Clock },
+              ].map((s) => (
+                <Card key={s.label} hover className="flex flex-col gap-3 p-5 !p-5">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                    <s.icon size={17} aria-hidden />
+                  </span>
+                  <span className="font-mono text-xl font-bold tabular-nums leading-none lg:text-2xl">
+                    {typeof s.value === "number" ? <CountUp value={s.value} /> : s.value}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+                    {s.label}
+                  </span>
+                </Card>
+              ))}
+            </div>
+          </motion.div>
         </div>
-      )}
 
-      {/* Stats Marquee */}
-      <div className="mb-12 border-y-2 border-border py-6">
-        <Marquee speed={60} gradient={false} autoFill>
-          {statCards.map((stat, i) => (
-            <div key={i} className="mx-8 flex items-center gap-4">
-              <span className="text-muted-fg">{stat.icon}</span>
-              <span className="text-4xl font-bold uppercase tracking-tighter lg:text-6xl">
-                {stat.value}
-              </span>
-              <span className="text-xs font-bold uppercase tracking-widest text-muted-fg">
-                {stat.label}
-              </span>
+        {/* Analytics + Deadlines row */}
+        <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
+          <motion.div variants={item} className="lg:col-span-3">
+            {weekly && <WeeklyAnalytics data={weekly.weekDays} />}
+          </motion.div>
+          <motion.div variants={item} className="lg:col-span-2">
+            <DeadlineList deadlines={weekly?.deadlines ?? []} />
+          </motion.div>
+        </div>
+
+        {/* Subject shortcuts */}
+        {stats.subjectBreakdown.length > 0 && (
+          <motion.div variants={item}>
+            <p className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-fg">
+              Subjects
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {stats.subjectBreakdown.slice(0, 8).map((s) => (
+                <Link key={s.id} href="/subjects" aria-label={`Open ${s.name}`}>
+                  <Card hover className="relative overflow-hidden !p-5">
+                    <span
+                      className="absolute inset-y-0 left-0 w-1"
+                      style={{ backgroundColor: s.color }}
+                      aria-hidden
+                    />
+                    <p className="truncate pl-2 font-semibold tracking-tight">{s.name}</p>
+                    <p className="mt-2 pl-2 font-mono text-xs tabular-nums text-muted-fg">
+                      {s.cardCount} cards ·{" "}
+                      {s.dueCount > 0 ? (
+                        <span className="font-bold text-accent">{s.dueCount} due</span>
+                      ) : (
+                        "clear"
+                      )}
+                    </p>
+                  </Card>
+                </Link>
+              ))}
             </div>
-          ))}
-        </Marquee>
-      </div>
+          </motion.div>
+        )}
 
-      {/* Stats Grid */}
-      <div className="mb-12 grid grid-cols-2 gap-px bg-border lg:grid-cols-3">
-        {statCards.map((stat) => (
-          <Card
-            key={stat.label}
-            hover
-            className="flex flex-col items-center justify-center py-12 text-center"
-          >
-            <span className="mb-4 text-muted-fg transition-colors group-hover:text-accent-fg">
-              {stat.icon}
-            </span>
-            <p className="text-5xl group-hover:text-accent-fg lg:text-7xl">
-              {stat.value}
-            </p>
-            <p className="mt-2 text-xs font-bold uppercase tracking-widest text-muted-fg group-hover:text-accent-fg">
-              {stat.label}
-            </p>
-          </Card>
-        ))}
-      </div>
-
-      {/* Quick Nav — Originkit HoverImageReveal shelf */}
-      <div className="mb-12">
-        <RevealHeading
-          text="QUICK ACCESS"
-          tag="h2"
-          className="mb-6 text-3xl font-bold tracking-tighter"
-        />
-        <QuickNavShelf />
-      </div>
-
-      {/* Recent Sessions */}
-      <div>
-        <RevealHeading
-          text="RECENT SESSIONS"
-          tag="h2"
-          className="mb-6 text-3xl font-bold tracking-tighter"
-        />
-        {stats.recentSessions.length === 0 ? (
-          <Card>
-            <p className="py-12 text-center text-sm text-muted-fg uppercase tracking-widest">
-              NO STUDY SESSIONS YET — START YOUR FIRST SESSION
-            </p>
-          </Card>
-        ) : (
-          <div className="border-2 border-border divide-y-2 divide-border">
-            {stats.recentSessions.map((session) => (
-              <div key={session.id} className="group flex items-center justify-between p-6 transition-colors hover:border-accent hover:bg-muted/30">
-                <div className="flex items-center gap-4">
-                  <div
-                    className="h-3 w-3 transition-transform group-hover:scale-125"
-                    style={{
-                      backgroundColor: session.subject?.color ?? "#71717A",
-                    }}
-                  />
-                  <div>
-                    <p className="font-bold uppercase tracking-tight">
-                      {session.title}
-                    </p>
-                    <p className="text-xs text-muted-fg uppercase tracking-widest">
-                      {session.subject?.name ?? "GENERAL"}
-                    </p>
+        {/* Recent sessions */}
+        <motion.div variants={item} className="mt-8">
+          <p className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-fg">
+            Recent Sessions
+          </p>
+          {stats.recentSessions.length === 0 ? (
+            <Card className="py-12 text-center">
+              <Sparkles size={28} aria-hidden className="mx-auto mb-3 text-accent" />
+              <p className="text-sm text-muted-fg">
+                No sessions yet — start your first Focus Zone timer above.
+              </p>
+            </Card>
+          ) : (
+            <div className="glass divide-y divide-border overflow-hidden rounded-3xl">
+              {stats.recentSessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="group flex items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-glass-hover"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: session.subject?.color ?? "#64748B" }}
+                      aria-hidden
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold tracking-tight">
+                        {session.title}
+                      </p>
+                      <p className="text-[11px] uppercase tracking-widest text-muted-fg">
+                        {session.subject?.name ?? "General"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                        session.completed
+                          ? "bg-grow/10 text-grow"
+                          : "bg-flow/10 text-flow"
+                      }`}
+                    >
+                      {session.completed ? "Done" : "Active"}
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-muted-fg">
+                      {formatDuration(session.durationMin)}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <Badge
-                    variant={session.completed ? "success" : "default"}
-                  >
-                    {session.completed ? "DONE" : "IN PROGRESS"}
-                  </Badge>
-                  <span className="text-xs text-muted-fg uppercase tracking-widest">
-                    {formatDuration(session.durationMin)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
+
+// keep unused imports honest
+void StickyNote;

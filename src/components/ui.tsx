@@ -1,6 +1,21 @@
-import { cn } from "@/lib/utils";
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+"use client";
 
+import { cn } from "@/lib/utils";
+import {
+  forwardRef,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+  type ButtonHTMLAttributes,
+} from "react";
+import { createPortal } from "react-dom";
+
+/* ════════════════════════════════════════════════════════════════
+   STUDYMAX v2 UI PRIMITIVES — "Aurora Glass"
+   Glass surfaces, generous radii, token-driven color only.
+   ════════════════════════════════════════════════════════════════ */
+
+// ─── Button (pill radius, shine sweep) ────────────────────────────
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
@@ -12,25 +27,26 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center gap-2 font-bold uppercase tracking-tighter transition-all duration-200",
+          "inline-flex items-center justify-center gap-2 font-semibold tracking-tight transition-all duration-200",
+          "rounded-full",
           "disabled:pointer-events-none disabled:opacity-50",
           "active:scale-95",
           "relative overflow-hidden",
           "before:absolute before:inset-0 before:-translate-x-full before:bg-white/10 before:transition-transform before:duration-300 hover:before:translate-x-0",
           {
-            "bg-accent text-accent-fg hover:scale-[1.04] hover:bg-accent":
+            "bg-accent text-accent-fg hover:shadow-[0_0_32px_-8px_var(--color-accent)]":
               variant === "primary",
-            "border-2 border-border bg-bg text-fg hover:bg-fg hover:text-bg":
+            "border border-glass-border bg-glass text-fg backdrop-blur-md hover:bg-glass-hover hover:border-fg/20":
               variant === "secondary",
             "text-muted-fg hover:text-accent":
               variant === "ghost",
-            "border-2 border-danger bg-danger/10 text-danger hover:bg-danger hover:text-on-color":
+            "border border-danger/40 bg-danger/10 text-danger hover:bg-danger hover:text-on-color":
               variant === "danger",
           },
           {
-            "h-10 px-4 text-xs": size === "sm",
-            "h-12 px-6 text-sm": size === "md",
-            "h-14 px-8 text-base": size === "lg",
+            "h-9 px-4 text-xs": size === "sm",
+            "h-11 px-6 text-sm": size === "md",
+            "h-13 px-8 text-base": size === "lg",
           },
           className
         )}
@@ -41,22 +57,25 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
-// ─── Card ─────────────────────────────────────────────────────────
+// ─── Card ────────────────────────────────────────────────────────
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   hover?: boolean;
+  glow?: boolean;
 }
 
-export function Card({ className, hover, ...props }: CardProps) {
+export function Card({ className, hover, glow, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        "border-2 border-border bg-bg p-6 transition-all duration-200",
-        // On hover the card fills with the accent color — force descendant
-        // text to accent-fg so nothing becomes unreadable. EXCLUDE elements
-        // that carry their own bg-* class (e.g. tag chips with bg-muted):
-        // they keep their own surface + text color, otherwise they'd render
-        // dark-on-dark and vanish.
-        hover && "cursor-pointer hover:border-accent hover:bg-accent hover:text-accent-fg hover:[&_*:not([class*='bg-'])]:text-accent-fg group",
+        "glass rounded-2xl p-6 transition-all duration-300",
+        // Hover: lift + accent edge + soft glow. Descendant text switches to
+        // the accent color — text-accent is tuned for readability ON the theme
+        // bg in every theme (text-accent-fg is for text ON the accent fill and
+        // would be near-invisible here). Elements with their own bg-* keep
+        // their surface.
+        hover &&
+          "cursor-pointer group hover:-translate-y-1 hover:scale-[1.01] hover:border-accent/40 hover:glow-accent hover:[&_*:not([class*='bg-'])]:text-accent",
+        glow && "border-accent/30 shadow-[0_0_48px_-16px_var(--color-accent-soft,var(--color-accent))]",
         className
       )}
       {...props}
@@ -67,7 +86,7 @@ export function Card({ className, hover, ...props }: CardProps) {
 // ─── Badge ────────────────────────────────────────────────────────
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: "default" | "success" | "warning" | "danger";
+  variant?: "default" | "success" | "warning" | "danger" | "flow" | "accent";
   className?: string;
 }
 
@@ -75,12 +94,14 @@ export function Badge({ children, variant = "default", className }: BadgeProps) 
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest",
         {
-          "bg-muted text-muted-fg": variant === "default",
-          "bg-success/10 text-success": variant === "success",
+          "bg-muted/80 text-muted-fg": variant === "default",
+          "bg-grow/10 text-grow": variant === "success",
           "bg-warning/10 text-warning": variant === "warning",
           "bg-danger/10 text-danger": variant === "danger",
+          "bg-flow/10 text-flow": variant === "flow",
+          "bg-accent-soft text-accent": variant === "accent",
         },
         className
       )}
@@ -90,7 +111,7 @@ export function Badge({ children, variant = "default", className }: BadgeProps) 
   );
 }
 
-// ─── Input ────────────────────────────────────────────────────────
+// ─── Input (glass-inset well) ────────────────────────────────────
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
@@ -101,16 +122,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="space-y-1.5">
         {label && (
-          <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+          <label className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
             {label}
           </label>
         )}
         <input
           ref={ref}
           className={cn(
-            "flex h-12 w-full border-b-2 border-border bg-transparent px-0 py-2 text-lg font-bold uppercase tracking-tight",
-            "text-fg placeholder:text-muted-fg/70",
-            "focus:border-accent focus:outline-none",
+            "glass-inset flex h-12 w-full rounded-xl px-4 py-2 text-base font-medium tracking-tight",
+            "text-fg placeholder:text-muted-fg/60",
+            "border-border focus:border-accent/60 focus:outline-none",
             "transition-colors duration-200",
             error && "border-danger",
             className
@@ -134,15 +155,15 @@ export function Textarea({ className, label, error, ...props }: TextareaProps) {
   return (
     <div className="space-y-1.5">
       {label && (
-        <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+        <label className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
           {label}
         </label>
       )}
       <textarea
         className={cn(
-          "flex w-full border-b-2 border-border bg-transparent px-0 py-2 text-lg font-bold tracking-tight",
-          "text-fg placeholder:text-muted-fg/70",
-          "focus:border-accent focus:outline-none resize-none",
+          "glass-inset flex w-full rounded-xl px-4 py-3 text-base font-medium tracking-tight",
+          "text-fg placeholder:text-muted-fg/60",
+          "border-border focus:border-accent/60 focus:outline-none resize-none",
           "transition-colors duration-200",
           error && "border-danger",
           className
@@ -163,28 +184,35 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children }: ModalProps) {
-  if (!open) return null;
+  // SSR-safe "are we in the browser" probe without useEffect+setState
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  if (!open || !mounted || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-[rise_0.2s_ease-out]"
+        className="absolute inset-0 bg-black/70 backdrop-blur-md animate-[rise_0.2s_ease-out]"
         onClick={onClose}
       />
-      <div className="rise-in relative w-full max-w-md border-2 border-border bg-bg p-6 shadow-2xl">
+      <div className="modal-pop rise-in relative w-full max-w-md rounded-3xl border border-glass-border bg-bg-raised p-6 shadow-2xl ring-1 ring-white/5">
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-xl font-bold uppercase tracking-tighter">{title}</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">{title}</h2>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-none p-1 text-muted-fg transition-colors hover:bg-accent hover:text-accent-fg"
+            className="rounded-full p-2 text-muted-fg transition-colors hover:bg-accent-soft hover:text-accent"
           >
             ✕
           </button>
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -199,10 +227,10 @@ interface EmptyStateProps {
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="mb-6 text-muted-fg transition-colors group-hover:text-accent">
+      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-soft text-accent">
         {icon}
       </div>
-      <h3 className="mb-2 text-3xl font-bold uppercase tracking-tighter">{title}</h3>
+      <h3 className="font-display mb-2 text-2xl font-bold tracking-tight">{title}</h3>
       <p className="mb-8 max-w-sm text-sm text-muted-fg">{description}</p>
       {action}
     </div>
@@ -211,7 +239,7 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
 
 // ─── Skeleton ─────────────────────────────────────────────────────
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("skeleton rounded-none", className)} />;
+  return <div className={cn("skeleton rounded-xl", className)} />;
 }
 
 // ─── Massive Number ───────────────────────────────────────────────
@@ -224,12 +252,115 @@ interface MassiveNumberProps {
 export function MassiveNumber({ value, label, className }: MassiveNumberProps) {
   return (
     <div className={cn("text-center", className)}>
-      <p className="text-6xl font-bold uppercase tracking-tighter text-muted lg:text-8xl">
+      <p className="font-display text-6xl font-bold tracking-tighter text-muted lg:text-8xl">
         {value}
       </p>
       <p className="mt-2 text-xs font-bold uppercase tracking-widest text-muted-fg">
         {label}
       </p>
+    </div>
+  );
+}
+
+// ─── RingProgress (anime.js-driven SVG progress ring) ─────────────
+// Animates stroke-dashoffset on mount / value change via anime.js.
+// Pure data-viz: no state, no re-render churn.
+interface RingProgressProps {
+  /** 0..100 */
+  value: number;
+  size?: number;
+  stroke?: number;
+  /** gradient start/end colors; default accent→flow */
+  fromColor?: string;
+  toColor?: string;
+  trackColor?: string;
+  children?: React.ReactNode;
+  className?: string;
+  label?: string; // aria-label summary
+}
+
+export function RingProgress({
+  value,
+  size = 120,
+  stroke = 10,
+  fromColor = "var(--color-accent)",
+  toColor = "var(--color-flow)",
+  trackColor = "var(--color-muted)",
+  children,
+  className,
+  label,
+}: RingProgressProps) {
+  const circleRef = useRef<SVGCircleElement>(null);
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, value));
+
+  useEffect(() => {
+    const el = circleRef.current;
+    if (!el) return;
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    import("animejs")
+      .then((mod) => {
+        if (cancelled) return;
+        const { animate, eases } = mod as typeof import("animejs");
+        // anime.js v4: params and tween options live in ONE object
+        animate(el, {
+          strokeDashoffset: [c, c - (c * clamped) / 100],
+          duration: 1400,
+          ease: eases.outExpo,
+        });
+      })
+      .catch(() => {
+        // anime.js failed to load — set the final value directly
+        if (!cancelled && el) {
+          el.style.strokeDashoffset = String(c - (c * clamped) / 100);
+        }
+      });
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, [clamped, c]);
+
+  return (
+    <div
+      role="img"
+      aria-label={label ?? `${Math.round(clamped)} percent complete`}
+      className={cn("relative inline-flex items-center justify-center", className)}
+      style={{ width: size, height: size }}
+    >
+      <svg width={size} height={size} className="-rotate-90">
+        <defs>
+          <linearGradient id={`ring-${size}-${stroke}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={fromColor} />
+            <stop offset="100%" stopColor={toColor} />
+          </linearGradient>
+        </defs>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={trackColor}
+          strokeWidth={stroke}
+        />
+        <circle
+          ref={circleRef}
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={`url(#ring-${size}-${stroke})`}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        {children}
+      </div>
     </div>
   );
 }

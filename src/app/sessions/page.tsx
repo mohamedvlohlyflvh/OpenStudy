@@ -1,41 +1,91 @@
 "use client";
 
 import { useState, useEffect, useRef, useTransition } from "react";
-import { Play, Pause, Square, Clock, Timer, Trash2 } from "lucide-react";
-import { Button, Badge, EmptyState, Input, Skeleton } from "@/components/ui";
+import { Play, Pause, Square, Clock, Timer, Trash2, SkipForward, Coffee, Brain, Save, X } from "lucide-react";
+import { Badge, EmptyState, Skeleton } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RevealHeading } from "@/components/reveal-heading";
-import { getStudySessions, createStudySession, deleteStudySession, getSubjects } from "@/app/actions";
+import { ScrambleSubtitle } from "@/components/scramble-subtitle";
+import GravityFall from "@/components/originkit/ui/falling-text";
+import { magneticHandlers } from "@/lib/interactions";
+import { motion, AnimatePresence } from "framer-motion";
+import { getStudySessions, createStudySession, deleteStudySession, getSubjects, getPomoPresets, createPomoPreset, deletePomoPreset } from "@/app/actions";
 import { formatDuration, formatDate } from "@/lib/utils";
+import { usePomodoro, phaseSeconds, BUILTIN_PRESETS, type PomoConfig } from "@/lib/pomodoro";
+import type { PomoPresetRec } from "@/lib/db";
 
 type Session = Awaited<ReturnType<typeof getStudySessions>>[number];
 type Subject = Awaited<ReturnType<typeof getSubjects>>[number];
+
+type TimerMode = "stopwatch" | "pomodoro";
+
+// Module-level constants: stable identities so GravityFall's mount effect
+// never re-fires on parent re-renders (the timer re-renders every second).
+const FALL_TRANSITION = { type: "spring" as const, stiffness: 420, damping: 18 };
+
+// Phase visuals — work / short break / long break
+const PHASE_META = {
+  work: {
+    label: "FOCUS",
+    cls: "border-accent/40 bg-accent/10 text-yellow-400",
+    ring: "#FACC15",
+    text: "text-yellow-300 drop-shadow-[0_0_24px_rgba(250,204,21,0.35)]",
+  },
+  break: {
+    label: "BREAK",
+    cls: "border-emerald-400/40 bg-emerald-400/10 text-emerald-400",
+    ring: "#34D399",
+    text: "text-emerald-300 drop-shadow-[0_0_24px_rgba(52,211,153,0.35)]",
+  },
+  long: {
+    label: "LONG BREAK",
+    cls: "border-sky-400/40 bg-sky-400/10 text-sky-400",
+    ring: "#38BDF8",
+    text: "text-sky-300 drop-shadow-[0_0_24px_rgba(56,189,248,0.35)]",
+  },
+} as const;
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loaded, setLoaded] = useState(false);
 
+  const [mode, setMode] = useState<TimerMode>("stopwatch");
+
+  // ── Stopwatch state (unchanged) ────────────────────────────────
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerPaused, setTimerPaused] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
+
+  // ── Shared session fields ──────────────────────────────────────
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [sessionTitle, setSessionTitle] = useState("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStartedAtRef = useRef<Date | null>(null);
 
+  // ── Pomodoro — shared engine hook (work / break / long break) ──
+  const pomo = usePomodoro();
+  const { workMin, breakMin, longBreakMin, cyclesBeforeLongBreak, autoAdvance } = pomo.config;
+
+  // ── Custom presets (saved in Dexie) ────────────────────────────
+  const [presets, setPresets] = useState<PomoPresetRec[]>([]);
+  const [presetName, setPresetName] = useState("");
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+
   const [, startTransition] = useTransition();
 
   useEffect(() => {
-    Promise.all([getStudySessions(), getSubjects()]).then(([s, sub]) => {
+    Promise.all([getStudySessions(), getSubjects(), getPomoPresets()]).then(([s, sub, p]) => {
       setSessions(s);
       setSubjects(sub);
+      setPresets(p);
       setLoaded(true);
     });
   }, []);
 
+  // Stopwatch interval (unchanged)
   useEffect(() => {
-    if (timerRunning && !timerPaused) {
+    if (mode === "stopwatch" && timerRunning && !timerPaused) {
       intervalRef.current = setInterval(() => {
         setTimerSeconds((s) => s + 1);
       }, 1000);
@@ -46,8 +96,11 @@ export default function SessionsPage() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [timerRunning, timerPaused]);
+  }, [mode, timerRunning, timerPaused]);
 
+  const anyRunning = timerRunning || pomo.running;
+
+  // ── Stopwatch handlers (unchanged) ─────────────────────────────
   const startTimer = () => {
     if (!sessionTitle.trim()) return;
     setTimerSeconds(0);
@@ -64,19 +117,13 @@ export default function SessionsPage() {
     setTimerPaused(false);
   };
 
-  const stopTimer = () => {
-    setTimerRunning(false);
-    setTimerPaused(false);
-    const seconds = timerSeconds;
-    const startedAt = timerStartedAtRef.current;
-    timerStartedAtRef.current = null;
+  const persistSession = (title: string, seconds: number, startedAt: Date | null) => {
     if (seconds < 3) return; // ignore accidental taps
     const duration = Math.max(1, Math.round(seconds / 60));
-
     startTransition(async () => {
       const session = await createStudySession({
         subjectId: selectedSubjectId || undefined,
-        title: sessionTitle.trim(),
+        title,
         durationMin: duration,
         completed: true,
         startedAt: startedAt ?? undefined,
@@ -90,9 +137,66 @@ export default function SessionsPage() {
         ...prev,
       ]);
       setSessionTitle("");
-      setSelectedSubjectId("");
       setTimerSeconds(0);
     });
+  };
+
+  const stopTimer = () => {
+    setTimerRunning(false);
+    setTimerPaused(false);
+    const seconds = timerSeconds;
+    const startedAt = timerStartedAtRef.current;
+    timerStartedAtRef.current = null;
+    persistSession(sessionTitle.trim(), seconds, startedAt);
+  };
+
+  // ── Pomodoro handlers ──────────────────────────────────────────
+  const applyConfig = (partial: Partial<PomoConfig>) => {
+    pomo.applyConfig(partial);
+    setActivePresetId(null); // manual tweak detaches from any preset
+  };
+
+  const applyPresetConfig = (cfg: Partial<PomoConfig>, presetId: string | null) => {
+    pomo.applyConfig(cfg, true);
+    setActivePresetId(presetId);
+  };
+
+  const saveCurrentAsPreset = async () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const preset = await createPomoPreset({
+      name,
+      workMin,
+      breakMin,
+      longBreakMin,
+      cyclesBeforeLongBreak,
+      autoAdvance,
+    });
+    setPresets((prev) => [...prev, preset]);
+    setPresetName("");
+    setActivePresetId(preset.id);
+  };
+
+  const removePreset = async (id: string) => {
+    if (!confirm("DELETE THIS PRESET?")) return;
+    await deletePomoPreset(id);
+    setPresets((prev) => prev.filter((p) => p.id !== id));
+    if (activePresetId === id) setActivePresetId(null);
+  };
+
+  const startPomodoro = () => {
+    pomo.start();
+    timerStartedAtRef.current = new Date();
+  };
+
+  const stopPomodoro = () => {
+    const snap = pomo.stop();
+    const startedAt = timerStartedAtRef.current;
+    timerStartedAtRef.current = null;
+    const title =
+      sessionTitle.trim() ||
+      `POMODORO — ${snap.cycles} CYCLE${snap.cycles === 1 ? "" : "S"}`;
+    persistSession(title, snap.workSeconds, startedAt);
   };
 
   const formatTimer = (s: number) => {
@@ -100,6 +204,12 @@ export default function SessionsPage() {
     const m = Math.floor((s % 3600) / 60);
     const sec = s % 60;
     return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const formatClock = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   };
 
   const handleDeleteSession = async (id: string) => {
@@ -110,14 +220,50 @@ export default function SessionsPage() {
 
   const totalMinutes = sessions.reduce((acc, s) => acc + s.durationMin, 0);
 
+  const pomoActive = pomo.active;
+
   return (
     <div className="p-8 lg:p-12">
       {/* Header */}
       <div className="mb-16">
         <RevealHeading text="SESSIONS" className="text-5xl lg:text-8xl" />
-        <p className="mt-4 text-sm text-muted-fg uppercase tracking-widest">
-          TRACK YOUR STUDY TIME AND PROGRESS
-        </p>
+        <ScrambleSubtitle
+          text="TRACK YOUR STUDY TIME AND PROGRESS"
+          className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
+        />
+      </div>
+
+      {/* Mode toggle — sliding pill */}
+      <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 p-1">
+        {(
+          [
+            { id: "stopwatch", label: "STOPWATCH", icon: <Timer size={14} /> },
+            { id: "pomodoro", label: "POMODORO", icon: <Clock size={14} /> },
+          ] as { id: TimerMode; label: string; icon: React.ReactNode }[]
+        ).map((m) => (
+          <button
+            key={m.id}
+            onClick={() => setMode(m.id)}
+            disabled={anyRunning && mode !== m.id}
+            className={cn(
+              "relative flex items-center rounded-full px-5 py-2 text-xs font-black uppercase tracking-widest transition-colors",
+              mode === m.id ? "text-zinc-950" : "text-zinc-400 hover:text-white",
+              anyRunning && mode !== m.id && "opacity-40 cursor-not-allowed"
+            )}
+          >
+            {mode === m.id && (
+              <motion.span
+                layoutId="timer-mode-pill"
+                transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                className="absolute inset-0 rounded-full bg-yellow-400"
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              {m.icon}
+              {m.label}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Timer */}
@@ -126,13 +272,13 @@ export default function SessionsPage() {
         <div className="space-y-6 lg:col-span-3">
           <div>
             <label className="text-xs font-bold text-zinc-400 tracking-wider mb-2 block">
-              SESSION TITLE
+              SESSION TITLE{mode === "pomodoro" ? " (OPTIONAL)" : ""}
             </label>
             <input
               value={sessionTitle}
               onChange={(e) => setSessionTitle(e.target.value)}
-              placeholder="E.G. REVIEWING CHAPTER 5"
-              disabled={timerRunning}
+              placeholder={mode === "pomodoro" ? "AUTO-NAMED FROM CYCLES IF EMPTY" : "E.G. REVIEWING CHAPTER 5"}
+              disabled={anyRunning}
               className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white placeholder-zinc-600 rounded-lg px-4 py-3 text-sm transition-all outline-none disabled:opacity-50"
             />
           </div>
@@ -143,7 +289,7 @@ export default function SessionsPage() {
             <select
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
-              disabled={timerRunning}
+              disabled={anyRunning}
               className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm transition-all outline-none disabled:opacity-50 appearance-none"
               style={{ colorScheme: "dark" }}
             >
@@ -157,46 +303,364 @@ export default function SessionsPage() {
               ))}
             </select>
           </div>
+
+          {/* Pomodoro settings — custom technique builder */}
+          {mode === "pomodoro" && (
+            <div className="border border-zinc-800 rounded-xl p-5 space-y-5">
+              {/* Built-in presets */}
+              <div>
+                <label className="text-xs font-bold text-zinc-400 tracking-wider mb-2 block">
+                  PRESETS
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {BUILTIN_PRESETS.map((p) => {
+                    const isActive =
+                      workMin === p.workMin &&
+                      breakMin === p.breakMin &&
+                      longBreakMin === p.longBreakMin &&
+                      cyclesBeforeLongBreak === p.cyclesBeforeLongBreak;
+                    return (
+                      <button
+                        key={p.label}
+                        onClick={() => applyPresetConfig(p, null)}
+                        disabled={pomo.running}
+                        aria-pressed={isActive}
+                        className={cn(
+                          "px-4 py-2 rounded-lg border text-xs font-black uppercase tracking-widest transition-colors",
+                          isActive
+                            ? "border-yellow-400 bg-yellow-400/10 text-yellow-400"
+                            : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-white",
+                          pomo.running && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                  {/* Saved custom presets */}
+                  {presets.map((p) => (
+                    <span
+                      key={p.id}
+                      className={cn(
+                        "group inline-flex items-center overflow-hidden rounded-lg border text-xs font-black uppercase tracking-widest transition-colors",
+                        activePresetId === p.id
+                          ? "border-yellow-400 bg-yellow-400/10 text-yellow-400"
+                          : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-white",
+                        pomo.running && "opacity-50"
+                      )}
+                    >
+                      <button
+                        onClick={() => applyPresetConfig(p, p.id)}
+                        disabled={pomo.running}
+                        aria-pressed={activePresetId === p.id}
+                        className="px-4 py-2 disabled:cursor-not-allowed"
+                        title={`${p.workMin}m focus / ${p.breakMin}m break${
+                          p.longBreakMin > 0 && p.cyclesBeforeLongBreak > 0
+                            ? ` / ${p.longBreakMin}m long every ${p.cyclesBeforeLongBreak}`
+                            : ""
+                        }`}
+                      >
+                        {p.name}
+                      </button>
+                      <button
+                        onClick={() => removePreset(p.id)}
+                        disabled={pomo.running}
+                        aria-label={`Delete preset ${p.name}`}
+                        className="border-l border-zinc-800 px-2 py-2 text-zinc-600 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom durations */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div>
+                  <label className="text-xs font-bold text-zinc-400 tracking-wider mb-2 block">
+                    WORK (MIN)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={180}
+                    value={workMin}
+                    onChange={(e) => applyConfig({ workMin: parseInt(e.target.value, 10) || 1 })}
+                    disabled={pomo.running}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-zinc-400 tracking-wider mb-2 block">
+                    BREAK (MIN)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={breakMin}
+                    onChange={(e) => applyConfig({ breakMin: parseInt(e.target.value, 10) || 1 })}
+                    disabled={pomo.running}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-zinc-400 tracking-wider mb-2 block">
+                    LONG BREAK (MIN)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={90}
+                    value={longBreakMin}
+                    onChange={(e) => applyConfig({ longBreakMin: parseInt(e.target.value, 10) || 0 })}
+                    disabled={pomo.running}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-zinc-400 tracking-wider mb-2 block">
+                    CYCLES → LONG
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={12}
+                    value={cyclesBeforeLongBreak}
+                    onChange={(e) =>
+                      applyConfig({ cyclesBeforeLongBreak: parseInt(e.target.value, 10) || 0 })
+                    }
+                    disabled={pomo.running}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                {longBreakMin > 0 && cyclesBeforeLongBreak > 0
+                  ? `LONG BREAK (${longBreakMin}M) AFTER EVERY ${cyclesBeforeLongBreak} CYCLES`
+                  : "SET LONG BREAK + CYCLES ABOVE 0 TO ENABLE LONG BREAKS"}
+              </p>
+
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoAdvance}
+                  onChange={(e) => applyConfig({ autoAdvance: e.target.checked })}
+                  className="h-4 w-4 accent-yellow-400"
+                />
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                  AUTO-START NEXT PHASE
+                </span>
+              </label>
+
+              {/* Save current setup as a named preset */}
+              <div className="flex gap-2 border-t border-zinc-800 pt-4">
+                <input
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveCurrentAsPreset();
+                  }}
+                  placeholder="SAVE THIS SETUP AS… (E.G. DEEP WORK 50/10)"
+                  disabled={pomo.running}
+                  maxLength={50}
+                  className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white placeholder-zinc-600 rounded-lg px-4 py-2.5 text-xs font-bold uppercase tracking-widest transition-all outline-none disabled:opacity-50"
+                />
+                <button
+                  onClick={saveCurrentAsPreset}
+                  disabled={pomo.running || !presetName.trim()}
+                  className={cn(
+                    "flex shrink-0 items-center gap-2 rounded-lg border border-yellow-400/40 bg-yellow-400/10 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-yellow-400 transition-colors hover:bg-yellow-400/20",
+                    (pomo.running || !presetName.trim()) && "opacity-40 cursor-not-allowed"
+                  )}
+                >
+                  <Save size={13} /> SAVE
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Timer Hero — 2 cols */}
         <div className="lg:col-span-2 flex flex-col items-center justify-center bg-zinc-900 border border-zinc-800 rounded-xl p-8">
-          <div
-            className={`flex flex-col items-center justify-center gap-4 ${timerRunning && !timerPaused ? "shadow-[0_0_30px_rgba(225,255,0,0.05)]" : ""} rounded-xl w-full`}
-          >
-            <p className={`font-mono tracking-wider text-4xl sm:text-6xl md:text-7xl font-extrabold text-white tabular-nums ${timerRunning && !timerPaused ? "text-yellow-300" : ""} transition-colors`}>
-              {formatTimer(timerSeconds)}
-            </p>
-          </div>
-          <button
-            onClick={!timerRunning ? startTimer : timerPaused ? resumeTimer : pauseTimer}
-            disabled={!timerRunning && !sessionTitle.trim() ? true : false}
-            className={cn(
-              "mt-6 w-full bg-yellow-400 hover:bg-yellow-300 text-zinc-950 font-black text-lg rounded-lg shadow uppercase tracking-wide transition-all py-3 flex items-center justify-center gap-2",
-              (!timerRunning && !sessionTitle.trim()) && "opacity-50 cursor-not-allowed"
-            )}
-          >
-            {!timerRunning ? (
-              <>
-                <Play size={20} /> START
-              </>
-            ) : timerPaused ? (
-              <>
-                <Play size={20} /> RESUME
-              </>
-            ) : (
-              <>
-                <Pause size={20} /> PAUSE
-              </>
-            )}
-          </button>
-          {timerRunning && (
-            <button
-              onClick={stopTimer}
-              className="mt-2 w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-black text-sm rounded-lg uppercase tracking-wide transition-all py-2.5 flex items-center justify-center gap-2 border border-red-500/20"
-            >
-              <Square size={14} /> STOP & SAVE
-            </button>
+          {mode === "stopwatch" ? (
+            <>
+              <div
+                className={cn(
+                  "relative flex w-full flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border px-6 py-8 transition-colors",
+                  timerRunning && !timerPaused
+                    ? "border-accent/40 bg-accent/[0.04] shadow-[0_0_50px_-12px_rgba(250,204,21,0.25)]"
+                    : "border-zinc-800 bg-zinc-900/60"
+                )}
+              >
+                {/* recording dot */}
+                <AnimatePresence>
+                  {timerRunning && !timerPaused && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      className="absolute right-5 top-5 flex h-3 w-3"
+                    >
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+
+                <p
+                  className={cn(
+                    "font-mono text-5xl font-extrabold tracking-wider tabular-nums transition-colors sm:text-7xl",
+                    timerRunning && !timerPaused ? "text-yellow-300 drop-shadow-[0_0_24px_rgba(250,204,21,0.35)]" : "text-white"
+                  )}
+                >
+                  {formatTimer(timerSeconds)}
+                </p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+                  {timerRunning && !timerPaused ? "● REC — FOCUS" : timerRunning ? "PAUSED" : "READY"}
+                </p>
+              </div>
+              <button
+                onClick={!timerRunning ? startTimer : timerPaused ? resumeTimer : pauseTimer}
+                {...magneticHandlers(0.18)}
+                disabled={!timerRunning && !sessionTitle.trim() ? true : false}
+                className={cn(
+                  "mt-6 w-full bg-yellow-400 hover:bg-yellow-300 text-zinc-950 font-black text-lg rounded-lg shadow uppercase tracking-wide transition-all py-3 flex items-center justify-center gap-2",
+                  (!timerRunning && !sessionTitle.trim()) && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {!timerRunning ? (
+                  <>
+                    <Play size={20} /> START
+                  </>
+                ) : timerPaused ? (
+                  <>
+                    <Play size={20} /> RESUME
+                  </>
+                ) : (
+                  <>
+                    <Pause size={20} /> PAUSE
+                  </>
+                )}
+              </button>
+              {timerRunning && (
+                <button
+                  onClick={stopTimer}
+                  className="mt-2 w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-black text-sm rounded-lg uppercase tracking-wide transition-all py-2.5 flex items-center justify-center gap-2 border border-red-500/20"
+                >
+                  <Square size={14} /> STOP & SAVE
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Phase badge — Originkit GravityFall drops the label in on each phase change */}
+              <div
+                className={cn(
+                  "mb-4 flex h-[30px] items-center gap-2 rounded-full border px-3.5 text-[11px] font-black uppercase tracking-widest",
+                  PHASE_META[pomo.phase].cls
+                )}
+              >
+                {pomo.phase === "work" ? <Brain size={13} /> : <Coffee size={13} />}
+                <GravityFall
+                  key={pomo.phase}
+                  text={PHASE_META[pomo.phase].label}
+                  tag="span"
+                  split="char"
+                  startY={-220}
+                  stagger={0.05}
+                  transition={FALL_TRANSITION}
+                  font={{ fontSize: 11, lineHeight: 1, fontWeight: 900, letterSpacing: "0.1em" }}
+                  color="currentColor"
+                />
+              </div>
+              {/* Timer — SVG ring tracks the phase */}
+              <div className="relative flex w-full items-center justify-center py-2">
+                {(() => {
+                  const total = phaseSeconds(pomo.phase, pomo.config);
+                  const R = 130;
+                  const C = 2 * Math.PI * R;
+                  const frac = Math.max(0, Math.min(1, pomo.seconds / total));
+                  return (
+                    <>
+                      <svg viewBox="0 0 300 300" className="h-auto w-full max-w-[320px] -rotate-90" aria-hidden>
+                        <circle cx="150" cy="150" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                        <motion.circle
+                          cx="150"
+                          cy="150"
+                          r={R}
+                          fill="none"
+                          stroke={PHASE_META[pomo.phase].ring}
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={C}
+                          initial={{ strokeDashoffset: C }}
+                          animate={{ strokeDashoffset: C * (1 - frac) }}
+                          transition={{ duration: 0.5, ease: "easeOut" }}
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                        <p
+                          className={cn(
+                            "font-mono text-4xl font-extrabold tabular-nums sm:text-6xl",
+                            pomoActive ? PHASE_META[pomo.phase].text : "text-white"
+                          )}
+                        >
+                          {formatClock(pomo.seconds)}
+                        </p>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+                          {pomoActive ? `● ${PHASE_META[pomo.phase].label}` : pomo.paused ? "PAUSED" : "READY"}
+                        </p>
+                        <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-widest tabular-nums text-zinc-500">
+                          {pomo.cycles} CYCLE{pomo.cycles === 1 ? "" : "S"} • {formatClock(pomo.workSeconds)} FOCUSED
+                        </p>
+                        {cyclesBeforeLongBreak > 0 && longBreakMin > 0 && (
+                          <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-zinc-600">
+                            LONG BREAK IN {cyclesBeforeLongBreak - (pomo.cycles % cyclesBeforeLongBreak)} CYCLE{cyclesBeforeLongBreak - (pomo.cycles % cyclesBeforeLongBreak) === 1 ? "" : "S"}
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+              <button
+                onClick={!pomo.running ? startPomodoro : pomo.togglePause}
+                {...magneticHandlers(0.18)}
+                className="mt-6 w-full bg-yellow-400 hover:bg-yellow-300 text-zinc-950 font-black text-lg rounded-lg shadow uppercase tracking-wide transition-all py-3 flex items-center justify-center gap-2"
+              >
+                {!pomo.running ? (
+                  <>
+                    <Play size={20} /> START
+                  </>
+                ) : pomo.paused ? (
+                  <>
+                    <Play size={20} /> RESUME
+                  </>
+                ) : (
+                  <>
+                    <Pause size={20} /> PAUSE
+                  </>
+                )}
+              </button>
+              {pomo.running && (
+                <div className="mt-2 grid w-full grid-cols-2 gap-2">
+                  <button
+                    onClick={pomo.skip}
+                    className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-black text-sm rounded-lg uppercase tracking-wide transition-all py-2.5 flex items-center justify-center gap-2 border border-zinc-700"
+                  >
+                    <SkipForward size={14} /> SKIP
+                  </button>
+                  <button
+                    onClick={stopPomodoro}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-black text-sm rounded-lg uppercase tracking-wide transition-all py-2.5 flex items-center justify-center gap-2 border border-red-500/20"
+                  >
+                    <Square size={14} /> STOP & SAVE
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

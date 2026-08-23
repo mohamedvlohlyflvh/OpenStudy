@@ -3,7 +3,29 @@
 import { create } from "zustand";
 
 // ─── App State ────────────────────────────────────────────────────
-export type ThemeName = "onyx" | "void" | "emerald" | "magma" | "grape" | "light";
+export type ThemeName =
+  | "aurora" | "midnight" | "nebula" | "matrix" | "ember" | "rosewood"
+  | "cyberpunk" | "arctic" | "sandstone" | "mono" | "light" | "paper";
+
+const THEME_FALLBACK: ThemeName = "aurora";
+
+/** Map a stored (possibly legacy v1) theme name to a valid v2 theme. */
+export function normalizeTheme(t: string | undefined | null): ThemeName {
+  const legacy: Record<string, ThemeName> = {
+    onyx: "mono",
+    void: "midnight",
+    emerald: "matrix",
+    magma: "ember",
+    grape: "nebula",
+  };
+  const all: ThemeName[] = [
+    "aurora", "midnight", "nebula", "matrix", "ember", "rosewood",
+    "cyberpunk", "arctic", "sandstone", "mono", "light", "paper",
+  ];
+  if (!t) return THEME_FALLBACK;
+  if (legacy[t]) return legacy[t];
+  return (all as string[]).includes(t) ? (t as ThemeName) : THEME_FALLBACK;
+}
 
 interface AppState {
   sidebarOpen: boolean;
@@ -68,7 +90,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: "",
   setSearchQuery: (q) => set({ searchQuery: q }),
 
-  theme: "onyx",
+  theme: "aurora",
   setTheme: (t) => {
     if (typeof document !== "undefined") {
       document.documentElement.setAttribute("data-theme", t);
@@ -91,9 +113,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (typeof prefs.sidebarOpen === "boolean") patch.sidebarOpen = prefs.sidebarOpen;
     if (typeof prefs.reducedMotion === "boolean") patch.reducedMotion = prefs.reducedMotion;
     if (prefs.theme) {
-      patch.theme = prefs.theme;
+      patch.theme = normalizeTheme(prefs.theme);
       if (typeof document !== "undefined") {
-        document.documentElement.setAttribute("data-theme", prefs.theme);
+        document.documentElement.setAttribute("data-theme", patch.theme);
       }
     }
     if (Object.keys(patch).length > 0) set(patch);

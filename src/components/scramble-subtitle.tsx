@@ -1,16 +1,13 @@
-"use client";
+// ─── ScrambleSubtitle — CSS-only staggered word reveal ─────────────
+// Previously wrapped Originkit GlitchCharReveal, which drove EVERY
+// character through React state (~60 re-renders/sec on long subtitles)
+// and caused visible lag. This version staggers whole WORDS with a
+// one-shot CSS animation: tiny DOM, zero per-frame JS, same kinetic feel.
+// Reduced motion (app toggle or OS) neutralizes it via the global
+// animation-duration override in globals.css — no JS check needed.
 
-import { useEffect, useState } from "react";
-import GlitchCharReveal from "@/components/originkit/ui/scrambletext";
-import { useAppStore } from "@/lib/store";
+const RISE_DELAY_MS = 45;
 
-/**
- * Kinetic scramble subtitle built on Originkit GlitchCharReveal.
- * - tag="div" (mandatory — ghost measurers break <p>/<h*> tags)
- * - restState "solid" + replay false → plays once on scroll-in, no layout shift
- * - flicker/hover disabled (long-text loop hazards per originkit skill)
- * - Reduced motion (app pref OR OS) → static text, same styling.
- */
 export function ScrambleSubtitle({
   text,
   className = "",
@@ -18,49 +15,20 @@ export function ScrambleSubtitle({
   text: string;
   className?: string;
 }) {
-  const reducedMotionPref = useAppStore((s) => s.reducedMotion);
-  const [osReduced, setOsReduced] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setOsReduced(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  const reduced = reducedMotionPref || osReduced;
-
-  if (reduced) {
-    return (
-      <p className={className} aria-label={text}>
-        {text}
-      </p>
-    );
-  }
-
+  const words = text.split(" ");
   return (
-    <div className={className} aria-label={text}>
-      <GlitchCharReveal
-        words={text}
-        tag="div"
-        color="var(--color-fg)"
-        font={{
-          fontSize: "inherit",
-          lineHeight: "inherit",
-          fontWeight: "inherit",
-          letterSpacing: "inherit",
-        }}
-        enterAnimation={{
-          mode: "oneLine",
-          position: "above",
-          restState: "solid",
-          replay: false,
-          flickerEnabled: false,
-          ease: { duration: 0.9 },
-        }}
-        hoverAnimation={{ type: "none" }}
-      />
-    </div>
+    <p className={className}>
+      {words.map((w, i) => (
+        <span key={`${w}-${i}`}>
+          <span
+            className="word-rise"
+            style={{ animationDelay: `${i * RISE_DELAY_MS}ms` }}
+          >
+            {w}
+          </span>
+          {i < words.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </p>
   );
 }

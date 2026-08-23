@@ -105,6 +105,17 @@ export interface StudySessionRec {
   endedAt?: Date | null;
 }
 
+export interface PomoPresetRec {
+  id: string;
+  name: string;
+  workMin: number;
+  breakMin: number;
+  longBreakMin: number;          // 0 = long break disabled
+  cyclesBeforeLongBreak: number; // 0 = long break disabled
+  autoAdvance: boolean;
+  createdAt: Date;
+}
+
 // ─── The database ────────────────────────────────────────────────
 // Dexie/IndexedDB is the SINGLE source of truth — fully local,
 // fully offline, per-device. No server database anywhere.
@@ -120,6 +131,7 @@ class StudyMaxDB extends Dexie {
   flashcards!: Table<FlashcardRec, string>;
   reviewLogs!: Table<ReviewLogRec, string>;
   studySessions!: Table<StudySessionRec, string>;
+  pomoPresets!: Table<PomoPresetRec, string>;
 
   constructor() {
     super("studymax");
@@ -135,6 +147,10 @@ class StudyMaxDB extends Dexie {
       flashcards: "id, topicId, subjectId, bundleId, nextReview, createdAt",
       reviewLogs: "id, flashcardId, reviewedAt",
       studySessions: "id, subjectId, startedAt",
+    });
+    // v2: custom pomodoro presets (additive — existing data untouched)
+    this.version(2).stores({
+      pomoPresets: "id, createdAt",
     });
   }
 }

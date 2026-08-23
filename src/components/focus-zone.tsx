@@ -1,0 +1,288 @@
+"use client";
+
+// ─── Focus Zone — the signature widget ─────────────────────────────
+// Circular SVG Pomodoro with a breathing conic halo while running,
+// phase chips (focus / break / long break), built-in + saved custom
+// presets, and a task banner. Shares the usePomodoro engine with the
+// /sessions page; logs via createStudySession.
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { Play, Pause, Square, SkipForward, Coffee, Brain, Music } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { createStudySession, getSubjects, getPomoPresets } from "@/app/actions";
+import { usePomodoro, phaseSeconds, BUILTIN_PRESETS } from "@/lib/pomodoro";
+import type { PomoPresetRec } from "@/lib/db";
+
+const SOUNDSCAPES = ["Silence", "Rain", "Café", "Waves"] as const;
+
+const PHASE_META = {
+  work: {
+    label: "Focus",
+    chip: "bg-accent-soft text-accent",
+    from: "var(--color-accent)",
+    to: "var(--color-flow)",
+  },
+  break: {
+    label: "Break",
+    chip: "bg-flow/10 text-flow",
+    from: "var(--color-flow)",
+    to: "var(--color-grow)",
+  },
+  long: {
+    label: "Long Break",
+    chip: "bg-grow/10 text-grow",
+    from: "var(--color-grow)",
+    to: "var(--color-accent)",
+  },
+} as const;
+
+export function FocusZone() {
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+  const [presets, setPresets] = useState<PomoPresetRec[]>([]);
+  const [subjectId, setSubjectId] = useState("");
+  const [task, setTask] = useState("");
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+  const [soundscape, setSoundscape] = useState<(typeof SOUNDSCAPES)[number]>("Silence");
+
+  const pomo = usePomodoro();
+  const { workMin, breakMin, longBreakMin, cyclesBeforeLongBreak } = pomo.config;
+
+  useEffect(() => {
+    getSubjects().then((s) => setSubjects(s.map((x) => ({ id: x.id, name: x.name }))));
+    getPomoPresets().then(setPresets);
+  }, []);
+
+  const total = phaseSeconds(pomo.phase, pomo.config);
+  const progress = total > 0 ? ((total - pomo.seconds) / total) * 100 : 0;
+
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const start = () => {
+    pomo.start();
+  };
+
+  const stop = () => {
+    const snap = pomo.stop();
+    if (snap.workSeconds >= 3) {
+      const duration = Math.max(1, Math.round(snap.workSeconds / 60));
+      const title =
+        task.trim() || `Focus — ${snap.cycles} cycle${snap.cycles === 1 ? "" : "s"}`;
+      createStudySession({
+        subjectId: subjectId || undefined,
+        title,
+        durationMin: duration,
+        completed: true,
+      }).catch(() => {});
+    }
+  };
+
+  const applyBuiltin = (cfg: (typeof BUILTIN_PRESETS)[number]) => {
+    pomo.applyConfig(cfg, true);
+    setActivePresetId(null);
+  };
+
+  const applySaved = (p: PomoPresetRec) => {
+    pomo.applyConfig(p, true);
+    setActivePresetId(p.id);
+  };
+
+  const meta = PHASE_META[pomo.phase];
+  const size = 260;
+  const stroke = 12;
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+
+  return (
+    <div className="glass relative overflow-hidden rounded-3xl p-8">
+      {/* Header row */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+            Focus Zone
+          </p>
+          <h2 className="font-display text-xl font-bold tracking-tight">Pomodoro</h2>
+        </div>
+        <div className="flex items-center gap-2 rounded-full bg-muted/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+          <Music size={12} aria-hidden />
+          <select
+            aria-label="Soundscape"
+            value={soundscape}
+            onChange={(e) => setSoundscape(e.target.value as (typeof SOUNDSCAPES)[number])}
+            className="cursor-pointer appearance-none bg-transparent text-[10px] font-bold uppercase tracking-widest outline-none"
+          >
+            {SOUNDSCAPES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Timer ring */}
+      <div className="relative mx-auto mb-6 w-fit">
+        {pomo.active && <div className="focus-halo" aria-hidden />}
+        <svg width={size} height={size} className="-rotate-90" role="img"
+          aria-label={`Pomodoro ${meta.label} phase, ${fmt(pomo.seconds)} remaining`}>
+          <defs>
+            <linearGradient id="focus-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor={meta.from} />
+              <stop offset="100%" stopColor={meta.to} />
+            </linearGradient>
+          </defs>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-muted)" strokeWidth={stroke} />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke="url(#focus-ring)"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={circ}
+            strokeDashoffset={circ - (circ * progress) / 100}
+            style={{ transition: "stroke-dashoffset 0.9s linear" }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span
+            className={cn(
+              "mb-1 flex items-center gap-1.5 rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest",
+              meta.chip
+            )}
+          >
+            {pomo.phase === "work" ? <Brain size={11} aria-hidden /> : <Coffee size={11} aria-hidden />}
+            {meta.label}
+          </span>
+          <span className="font-mono text-5xl font-bold tabular-nums tracking-tight">
+            {fmt(pomo.seconds)}
+          </span>
+          <span className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+            {pomo.cycles} cycle{pomo.cycles === 1 ? "" : "s"} done
+            {cyclesBeforeLongBreak > 0 && longBreakMin > 0 && pomo.phase === "work"
+              ? ` · long in ${cyclesBeforeLongBreak - (pomo.cycles % cyclesBeforeLongBreak)}`
+              : ""}
+          </span>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="mb-6 flex items-center justify-center gap-3">
+        {!pomo.running ? (
+          <button
+            onClick={start}
+            aria-label="Start focus session"
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg transition-transform hover:scale-105 active:scale-95 glow-accent"
+          >
+            <Play size={22} className="ml-0.5" />
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={pomo.togglePause}
+              aria-label={pomo.paused ? "Resume" : "Pause"}
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-glass-border bg-glass text-fg backdrop-blur-md transition-transform hover:scale-105 active:scale-95"
+            >
+              {pomo.paused ? <Play size={18} /> : <Pause size={18} />}
+            </button>
+            <button
+              onClick={pomo.skip}
+              aria-label="Skip phase"
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-glass-border bg-glass text-muted-fg backdrop-blur-md transition-transform hover:scale-105 hover:text-fg active:scale-95"
+            >
+              <SkipForward size={18} />
+            </button>
+            <button
+              onClick={stop}
+              aria-label="Stop and log session"
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition-transform hover:bg-danger hover:text-on-color active:scale-95"
+            >
+              <Square size={16} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Presets — built-in + saved custom techniques */}
+      <div className="mb-6 flex flex-wrap justify-center gap-2">
+        {BUILTIN_PRESETS.map((p) => {
+          const isActive =
+            workMin === p.workMin &&
+            breakMin === p.breakMin &&
+            longBreakMin === p.longBreakMin &&
+            cyclesBeforeLongBreak === p.cyclesBeforeLongBreak;
+          return (
+            <button
+              key={p.label}
+              onClick={() => applyBuiltin(p)}
+              disabled={pomo.running}
+              aria-pressed={isActive}
+              className={cn(
+                "rounded-full border px-4 py-1.5 text-xs font-bold tracking-wide transition-colors disabled:opacity-40",
+                isActive
+                  ? "border-accent/50 bg-accent-soft text-accent"
+                  : "border-glass-border bg-glass text-muted-fg hover:text-fg"
+              )}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+        {presets.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => applySaved(p)}
+            disabled={pomo.running}
+            aria-pressed={activePresetId === p.id}
+            title={`${p.workMin}m focus / ${p.breakMin}m break${
+              p.longBreakMin > 0 && p.cyclesBeforeLongBreak > 0
+                ? ` / ${p.longBreakMin}m long every ${p.cyclesBeforeLongBreak}`
+                : ""
+            }`}
+            className={cn(
+              "rounded-full border px-4 py-1.5 text-xs font-bold tracking-wide transition-colors disabled:opacity-40",
+              activePresetId === p.id
+                ? "border-accent/50 bg-accent-soft text-accent"
+                : "border-glass-border bg-glass text-muted-fg hover:text-fg"
+            )}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Current task banner + subject */}
+      <motion.div
+        layout
+        className="glass-inset flex items-center gap-3 rounded-2xl px-4 py-3"
+      >
+        <span className="h-2 w-2 shrink-0 rounded-full bg-flow animate-pulse-dot" aria-hidden />
+        <input
+          value={task}
+          onChange={(e) => setTask(e.target.value)}
+          placeholder="What are you working on?"
+          disabled={pomo.running}
+          className="w-full bg-transparent text-sm font-medium text-fg placeholder:text-muted-fg/60 outline-none focus-visible:shadow-none disabled:opacity-60"
+        />
+        {subjects.length > 0 && (
+          <select
+            aria-label="Subject"
+            value={subjectId}
+            onChange={(e) => setSubjectId(e.target.value)}
+            disabled={pomo.running}
+            className="shrink-0 cursor-pointer rounded-full bg-transparent text-xs text-muted-fg outline-none disabled:opacity-60"
+          >
+            <option value="">General</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </motion.div>
+    </div>
+  );
+}

@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Pencil, Layers, Download } from "lucide-react";
+import { Plus, Trash2, Pencil, Layers } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
+import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { showUndo } from "@/components/undo-toast";
 import { getBundles, createBundle, updateBundle, deleteBundle, exportBundleMarkdown } from "@/app/actions";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
-import ImportNotebookLMModal from "@/components/import-notebooklm-modal";
+import { spotlightProps } from "@/lib/interactions";
 
 type Bundle = Awaited<ReturnType<typeof getBundles>>[number];
 
@@ -34,8 +35,6 @@ export default function BundlesPage() {
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<Bundle | null>(null);
 
-  // Import from NotebookLM
-  const [importBundleId, setImportBundleId] = useState<string | null>(null);
 
   useEffect(() => {
     getBundles().then((b) => {
@@ -128,9 +127,10 @@ export default function BundlesPage() {
         <div className="flex items-end justify-between">
           <div>
             <RevealHeading text="BUNDLES" className="text-4xl lg:text-6xl" />
-            <p className="mt-2 text-sm text-muted-fg uppercase tracking-widest">
-              FLASHCARD DECKS FOR YOUR STUDY MATERIAL
-            </p>
+            <ScrambleSubtitle
+              text="FLASHCARD DECKS FOR YOUR STUDY MATERIAL"
+              className="mt-2 text-sm text-muted-fg uppercase tracking-widest"
+            />
           </div>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus size={16} />
@@ -168,7 +168,8 @@ export default function BundlesPage() {
             <Link
               key={bundle.id}
               href={`/flashcards?bundle=${bundle.id}`}
-              className="group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all hover:border-yellow-400/50 hover:bg-zinc-900"
+              {...spotlightProps()}
+              className="spotlight-card group relative flex h-52 w-full max-w-xs flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all duration-200 hover:-translate-y-1 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_18px_45px_-15px_rgba(250,204,21,0.25)]"
             >
               {/* top accent strip in the bundle's color */}
               <span
@@ -178,7 +179,14 @@ export default function BundlesPage() {
 
               {/* Header: icon + quick actions */}
               <div className="flex items-start justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-yellow-400/20 bg-yellow-400/10 text-lg font-bold text-yellow-400">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-xl text-lg font-black transition-transform duration-200 group-hover:scale-110"
+                  style={{
+                    backgroundColor: `${bundle.color || "#DFE104"}1f`,
+                    color: bundle.color || "#DFE104",
+                    boxShadow: `inset 0 0 0 1px ${(bundle.color || "#DFE104")}3d`,
+                  }}
+                >
                   {bundle.name.charAt(0)}
                 </div>
                 <div className="flex -mr-2 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.preventDefault()}>
@@ -215,18 +223,6 @@ export default function BundlesPage() {
                     className="p-2.5 text-[13px] leading-none text-zinc-400 hover:text-yellow-400"
                   >
                     📒
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      setImportBundleId(bundle.id);
-                    }}
-                    aria-label="Import from NotebookLM"
-                    title="Import from NotebookLM JSON"
-                    className="p-2.5 text-zinc-400 hover:text-yellow-400"
-                  >
-                    <Download size={14} />
                   </button>
                   <button
                     onClick={(e) => {
@@ -270,7 +266,10 @@ export default function BundlesPage() {
 
               {/* Footer — always-visible actions */}
               <div className="flex items-center justify-between gap-2" onClick={(e) => e.preventDefault()}>
-                <span className="rounded-full bg-zinc-800 px-2.5 py-1 font-mono text-xs text-zinc-300">
+                <span
+                  className="rounded-full px-2.5 py-1 font-mono text-xs"
+                  style={{ backgroundColor: `${bundle.color || "#DFE104"}14`, color: bundle.color || "#DFE104" }}
+                >
                   {bundle._count.flashcards} CARD{bundle._count.flashcards !== 1 ? "S" : ""}
                 </span>
                 <div className="flex items-center gap-3">
@@ -341,22 +340,6 @@ export default function BundlesPage() {
         )}
       </Modal>
 
-      {/* Import from NotebookLM */}
-      <ImportNotebookLMModal
-        open={!!importBundleId}
-        bundleId={importBundleId ?? ""}
-        onClose={() => setImportBundleId(null)}
-        onImported={(count) => {
-          if (!importBundleId) return;
-          setBundles((prev) =>
-            prev.map((b) =>
-              b.id === importBundleId
-                ? { ...b, _count: { flashcards: b._count.flashcards + count } }
-                : b
-            )
-          );
-        }}
-      />
     </div>
   );
 }

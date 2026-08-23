@@ -51,3 +51,8 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# local audit artifacts
+_e2e/screenshots-v2/
+_e2e/montages-v2/
+_e2e/audit-v2.json

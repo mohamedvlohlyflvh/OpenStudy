@@ -5,6 +5,7 @@ import { Brain, Zap, Plus, Pencil, Trash2, Layers, BarChart3, AlertTriangle, Tim
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button, Badge, EmptyState, Modal, Input, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
+import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { Markdown } from "@/components/markdown";
 import { showUndo } from "@/components/undo-toast";
 import {
@@ -30,11 +31,15 @@ import {
   batchDeleteCards,
   batchTagCards,
   batchMoveCards,
+  restoreFlashcard,
+  getFlashcardSnapshot,
   exportAllData,
   importAllData,
 } from "@/app/actions";
 import { SubjectTopicSelect } from "@/components/subject-topic-select";
 import { cn } from "@/lib/utils";
+import { spotlightProps } from "@/lib/interactions";
+import { motion } from "framer-motion";
 import { parseCardsFile } from "@/lib/parsers/cards";
 import { db as offlineDb, cacheBundles, cacheFlashcards, getCachedBundleCards, getCachedBundles } from "@/lib/db";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
@@ -83,7 +88,6 @@ function FlashcardsContent() {
   const [completedCount, setCompletedCount] = useState(0);
   const [totalReviewed, setTotalReviewed] = useState(0);
   const [learningQueue, setLearningQueue] = useState<Flashcard[]>([]);
-  const [inLearningMode, setInLearningMode] = useState(false);
   const [sprintMode, setSprintMode] = useState(false);
   const [sprintTimer, setSprintTimer] = useState(5);
   const sprintRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -275,11 +279,14 @@ function FlashcardsContent() {
   }, [selectedBundle, browseLoaded, loadBrowseAll]);
 
   // ─── Review handlers ────────────────────────────────────────
-  const activeCard = inLearningMode ? learningQueue[0] : dueCards[currentIndex];
+  // Serve the main due queue first; once it's exhausted, serve the
+  // same-session relearning queue (cards rated AGAIN / HARD).
+  const activeCard = dueCards[currentIndex] ?? learningQueue[0] ?? null;
 
   const handleReview = useCallback(
     async (quality: number) => {
       if (!activeCard || reviewing) return;
+      const servingFromQueue = dueCards[currentIndex] == null;
       setReviewing(true);
       try {
         await reviewCard(activeCard.id, quality);
@@ -297,34 +304,35 @@ function FlashcardsContent() {
         setCompletedCount((c) => c + 1);
 
         if (quality < 3) {
-          // Again: re-queue in learning queue
+          // AGAIN / HARD: requeue the card for later in THIS session
           setLearningQueue((prev) => [...prev, activeCard]);
-        } else {
-          // Hard/Easy: move on
-          if (inLearningMode) {
-            setLearningQueue((prev) => prev.slice(1));
-            if (learningQueue.length <= 1) {
-              setInLearningMode(false);
-            }
+        }
+
+        if (!servingFromQueue) {
+          // Main queue: advance; finishing it hands control to the relearn queue
+          if (currentIndex < dueCards.length - 1) {
+            setCurrentIndex((i) => i + 1);
           } else {
-            if (currentIndex < dueCards.length - 1) {
-              setCurrentIndex((i) => i + 1);
-            } else {
-              // Last card reviewed → empty the queue so the run completes
-              setDueCards([]);
-            }
+            setDueCards([]);
           }
+        } else if (quality >= 3) {
+          // Relearn queue: remembered → clear the card
+          setLearningQueue((prev) => prev.slice(1));
+        } else {
+          // Relearn queue: lapsed again → send it to the back
+          setLearningQueue((prev) => [...prev.slice(1), prev[0]]);
         }
         setIsFlipped(false);
 
-        // Dynamic queue replenishment (only when there are still cards left)
-        if (!inLearningMode && currentIndex < dueCards.length - 5) {
+        // Dynamic queue replenishment (only while the main queue is live)
+        if (currentIndex < dueCards.length - 5) {
           fetchMoreDue();
         }
       } finally {
         setReviewing(false);
       }
-    }, [activeCard, reviewing, inLearningMode, learningQueue, currentIndex, dueCards.length, loadDueCards, fetchMoreDue, triggerConfetti]
+    },
+    [activeCard, reviewing, currentIndex, dueCards, loadDueCards, fetchMoreDue, triggerConfetti]
   );
 
   // ─── Speed Sprint timer ─────────────────────────────────────
@@ -334,8 +342,11 @@ function FlashcardsContent() {
       sprintRef.current = setInterval(() => {
         setSprintTimer((t) => {
           if (t <= 1) {
-            handleReview(0); // Auto-again on timeout
-            return 5;
+            if (sprintRef.current) clearInterval(sprintRef.current);
+            // Fire outside the state updater: React 19 StrictMode
+            // double-invokes updaters, which could submit the review twice.
+            setTimeout(() => handleReview(0), 0);
+            return 0;
           }
           return t - 1;
         });
@@ -429,17 +440,20 @@ function FlashcardsContent() {
     const snapshot = deleteTarget;
     setDeleting(true);
     try {
+      // Snapshot everything needed for a faithful undo BEFORE deletion
+      const [cardSnapshot, tagLinks] = await Promise.all([
+        getFlashcardSnapshot(snapshot.id),
+        offlineDb.cardTags.where("cardId").equals(snapshot.id).toArray(),
+      ]);
       await deleteFlashcard(snapshot.id);
       setDeleteTarget(null);
       await loadDueCards();
       showUndo({
         message: `CARD DELETED`,
         undo: async () => {
-          if (snapshot.bundleId) {
-            await createBundleFlashcard({ bundleId: snapshot.bundleId, front: snapshot.front, back: snapshot.back });
-          } else if (snapshot.topicId) {
-            await createFlashcard({ topicId: snapshot.topicId, front: snapshot.front, back: snapshot.back });
-          }
+          // Restore the exact card (same id, SM-2 state, tags, links) —
+          // recreating it fresh would silently reset its scheduling.
+          if (cardSnapshot) await restoreFlashcard(cardSnapshot, tagLinks);
           await loadDueCards();
         },
       });
@@ -524,9 +538,10 @@ function FlashcardsContent() {
       {/* Header */}
       <div className="mb-6">
         <RevealHeading text="FLASHCARDS" className="text-4xl lg:text-6xl" />
-        <p className="mt-2 text-sm text-muted-fg uppercase tracking-widest">
-          SPACED REPETITION REVIEW SYSTEM
-        </p>
+        <ScrambleSubtitle
+          text="SPACED REPETITION REVIEW SYSTEM"
+          className="mt-2 text-sm text-muted-fg uppercase tracking-widest"
+        />
       </div>
 
       {/* Toolbar */}
@@ -640,27 +655,41 @@ function FlashcardsContent() {
             </div>
           )}
 
-          <div className={cn("ml-auto flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-widest", online ? "text-accent" : "text-danger")}>
-            {online ? <Wifi size={12} /> : <WifiOff size={12} />}
+          <div
+            className={cn(
+              "ml-auto flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest",
+              online ? "border-success/30 bg-success/10 text-success" : "border-danger/30 bg-danger/10 text-danger"
+            )}
+          >
+            {online ? <Wifi size={11} className={pending > 0 ? "animate-pulse" : ""} /> : <WifiOff size={11} />}
             {online ? (pending > 0 ? `SYNCING ${pending}` : "ONLINE") : `OFFLINE (${pending} QUEUED)`}
           </div>
 
-          {/* Mode tabs (segmented) */}
-          <div className="flex gap-1 overflow-x-auto border-2 border-border">
+          {/* Mode tabs — sliding accent underline */}
+          <div className="flex gap-1 overflow-x-auto rounded-xl border-2 border-border bg-muted/40 p-1">
             {(["review", "browse", "leeches", "stats"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
                 className={cn(
-                  "shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors",
-                  mode === m ? "bg-accent text-accent-fg" : "bg-bg text-muted-fg hover:text-fg"
+                  "relative shrink-0 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors",
+                  mode === m ? "text-accent-fg" : "text-muted-fg hover:text-fg"
                 )}
               >
-                {m === "review" && <Brain size={14} className="mr-1 inline" />}
-                {m === "browse" && <Search size={14} className="mr-1 inline" />}
-                {m === "leeches" && <AlertTriangle size={14} className="mr-1 inline" />}
-                {m === "stats" && <BarChart3 size={14} className="mr-1 inline" />}
-                {m.toUpperCase()}
+                {mode === m && (
+                  <motion.span
+                    layoutId="fc-tab-pill"
+                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                    className="absolute inset-0 rounded-lg bg-accent"
+                  />
+                )}
+                <span className="relative z-10">
+                  {m === "review" && <Brain size={14} className="mr-1 inline" />}
+                  {m === "browse" && <Search size={14} className="mr-1 inline" />}
+                  {m === "leeches" && <AlertTriangle size={14} className="mr-1 inline" />}
+                  {m === "stats" && <BarChart3 size={14} className="mr-1 inline" />}
+                  {m.toUpperCase()}
+                </span>
               </button>
             ))}
           </div>
@@ -693,13 +722,21 @@ function FlashcardsContent() {
                   <button
                     key={bundle.id}
                     onClick={() => setSelectedBundle(bundle.id)}
-                    className="group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all hover:border-yellow-400/50 hover:bg-zinc-900 text-left"
+                    {...spotlightProps()}
+                    className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all hover:border-yellow-400/50 hover:bg-zinc-900 text-left"
                   >
                     <span
                       className="absolute inset-x-0 top-0 h-0.5 rounded-t-xl"
                       style={{ backgroundColor: bundle.color || "#DFE104", boxShadow: `0 0 12px ${bundle.color || "#DFE104"}55` }}
                     />
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-yellow-400/20 bg-yellow-400/10 text-lg font-bold text-yellow-400">
+                    <div
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-black transition-transform duration-200 group-hover:scale-110"
+                      style={{
+                        backgroundColor: `${bundle.color || "#DFE104"}1f`,
+                        color: bundle.color || "#DFE104",
+                        boxShadow: `inset 0 0 0 1px ${(bundle.color || "#DFE104")}3d`,
+                      }}
+                    >
                       {bundle.name.charAt(0)}
                     </div>
                     <div className="mt-3 min-w-0">
@@ -713,7 +750,10 @@ function FlashcardsContent() {
                       )}
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="rounded-full bg-zinc-800 px-2.5 py-1 font-mono text-xs text-zinc-300">
+                      <span
+                        className="rounded-full px-2.5 py-1 font-mono text-xs"
+                        style={{ backgroundColor: `${bundle.color || "#DFE104"}14`, color: bundle.color || "#DFE104" }}
+                      >
                         {bundle._count.flashcards} CARD{bundle._count.flashcards !== 1 ? "S" : ""}
                       </span>
                       <span className="text-xs font-bold text-yellow-400 group-hover:underline">
@@ -801,43 +841,67 @@ function FlashcardsContent() {
               )}
             </div>
 
-            {/* Card */}
+            {/* Card — true 3D flip: question face and answer face are real
+                card faces rotating on rotateY; shape is rounded/layered with
+                a corner index instead of the old flat color-swap rectangle. */}
             {activeCard && (
               <div
-                className={cn(
-                  "group relative min-h-[300px] cursor-pointer border-2 p-10 flex items-center justify-center text-center transition-all duration-200",
-                  isFlipped ? "border-accent bg-accent text-accent-fg" : "border-border bg-bg hover:border-fg"
-                )}
+                className="flip-scene w-full cursor-pointer select-none"
                 onClick={() => !sprintMode && setIsFlipped((f) => !f)}
+                role="button"
+                aria-label={isFlipped ? "Show question" : "Reveal answer"}
               >
-                <div>
-                  {activeCard.topic && (
-                    <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
-                      {activeCard.topic.subject?.name ?? "GENERAL"} › {activeCard.topic.name}
-                    </p>
-                  )}
-                  <div className="mb-5 flex items-center gap-2">
-                    <Badge className={cn("", isFlipped ? "bg-accent-fg/20 text-accent-fg" : "")}>
-                      {isFlipped ? "ANSWER" : "QUESTION"}
-                    </Badge>
-                    {(() => {
-                      const st = getCardStatus(activeCard);
-                      return (
-                        <span className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest", isFlipped ? "text-accent-fg/70" : "text-muted-fg")}>
-                          <span className={cn("h-2 w-2 rounded-full", st.dot)} />
-                          {st.label}
-                        </span>
-                      );
-                    })()}
+                <div className="flip-card relative min-h-[320px] sm:min-h-[360px]" data-flipped={isFlipped}>
+                  {/* ── FRONT — QUESTION ── */}
+                  <div className="flip-face absolute inset-0 flex flex-col overflow-hidden rounded-2xl border-2 border-border bg-zinc-900/60 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.8)]">
+                    <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent to-transparent" />
+                    <div className="flex items-center justify-between px-7 pt-5">
+                      <Badge>QUESTION</Badge>
+                      {(() => {
+                        const st = getCardStatus(activeCard);
+                        return (
+                          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+                            <span className={cn("h-2 w-2 rounded-full", st.dot)} />
+                            {st.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex flex-1 flex-col items-center justify-center px-10 pb-4 text-center">
+                      {activeCard.topic && (
+                        <p className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted-fg/70">
+                          {activeCard.topic.subject?.name ?? "GENERAL"} › {activeCard.topic.name}
+                        </p>
+                      )}
+                      <div className="text-2xl font-bold uppercase leading-relaxed tracking-tight sm:text-[1.7rem]">
+                        {activeCard.front}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-border/60 px-7 py-3.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+                      <span className="font-mono">#{activeCard.id.slice(-4)}</span>
+                      <span className="flex animate-pulse items-center gap-1.5">
+                        CLICK OR PRESS SPACE TO REVEAL
+                        <Zap size={11} />
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-2xl font-bold uppercase tracking-tight leading-relaxed">
-                    {isFlipped ? <Markdown content={activeCard.back} /> : activeCard.front}
+
+                  {/* ── BACK — ANSWER ── */}
+                  <div className="flip-face flip-back absolute inset-0 flex flex-col overflow-hidden rounded-2xl border-2 border-accent bg-accent shadow-[0_18px_50px_-12px_rgba(250,204,21,0.25)]">
+                    <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent-fg/60 to-transparent" />
+                    <div className="flex items-center justify-between px-7 pt-5">
+                      <Badge className="bg-accent-fg/15 text-accent-fg">ANSWER</Badge>
+                    </div>
+                    <div className="flex flex-1 flex-col items-center justify-center px-10 pb-4 text-center">
+                      <div className="[&_p]:text-accent-fg [&_li]:text-accent-fg text-2xl font-bold uppercase leading-relaxed tracking-tight text-accent-fg sm:text-[1.7rem] [&_.md-p]:text-accent-fg">
+                        <Markdown content={activeCard.back} />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-accent-fg/15 px-7 py-3.5 text-[10px] font-bold uppercase tracking-widest text-accent-fg/70">
+                      <span className="font-mono">#{activeCard.id.slice(-4)}</span>
+                      <span>RATE IT BELOW</span>
+                    </div>
                   </div>
-                  {!isFlipped && (
-                    <p className="mt-8 text-xs text-muted-fg uppercase tracking-widest">
-                      CLICK OR PRESS SPACE TO REVEAL ANSWER
-                    </p>
-                  )}
                 </div>
               </div>
             )}
@@ -945,13 +1009,21 @@ function FlashcardsContent() {
                 <button
                   key={bundle.id}
                   onClick={() => router.push(`/bundles/${bundle.id}/cards`)}
-                  className="group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all hover:border-yellow-400/50 hover:bg-zinc-900"
+                  {...spotlightProps()}
+                  className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all hover:border-yellow-400/50 hover:bg-zinc-900"
                 >
                   <span
                     className="absolute inset-x-0 top-0 h-0.5 rounded-t-xl"
                     style={{ backgroundColor: bundle.color || "#DFE104", boxShadow: `0 0 12px ${(bundle.color || "#DFE104")}55` }}
                   />
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-yellow-400/20 bg-yellow-400/10 text-lg font-bold text-yellow-400">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-black transition-transform duration-200 group-hover:scale-110"
+                    style={{
+                      backgroundColor: `${bundle.color || "#DFE104"}1f`,
+                      color: bundle.color || "#DFE104",
+                      boxShadow: `inset 0 0 0 1px ${(bundle.color || "#DFE104")}3d`,
+                    }}
+                  >
                     {bundle.name.charAt(0)}
                   </div>
                   <div className="mt-3 min-w-0">
@@ -963,7 +1035,10 @@ function FlashcardsContent() {
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="rounded-full bg-zinc-800 px-2.5 py-1 font-mono text-xs text-zinc-300">
+                    <span
+                      className="rounded-full px-2.5 py-1 font-mono text-xs"
+                      style={{ backgroundColor: `${bundle.color || "#DFE104"}14`, color: bundle.color || "#DFE104" }}
+                    >
                       {bundle._count.flashcards} CARD{bundle._count.flashcards !== 1 ? "S" : ""}
                     </span>
                     <span className="text-xs font-bold text-yellow-400 group-hover:underline">Open →</span>
@@ -981,8 +1056,8 @@ function FlashcardsContent() {
                   <div
                     key={card.id}
                     className={cn(
-                      "group relative flex min-h-[200px] flex-col border-2 p-5 transition-all duration-200",
-                      selected ? "border-accent bg-accent/5" : flipped ? "border-accent bg-accent text-accent-fg" : "border-border bg-bg hover:border-fg"
+                      "group relative flex min-h-[200px] flex-col overflow-hidden rounded-2xl border-2 p-5 transition-all duration-200",
+                      selected ? "border-accent bg-accent/5" : flipped ? "border-accent bg-accent text-accent-fg shadow-[0_14px_40px_-12px_rgba(250,204,21,0.3)] -translate-y-0.5" : "border-border bg-bg shadow-sm hover:-translate-y-1 hover:border-fg hover:shadow-lg"
                     )}
                   >
                     <div className="mb-3 flex items-start justify-between gap-2">

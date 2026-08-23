@@ -4,10 +4,10 @@ import { useState, useEffect, useTransition } from "react";
 import { Plus, Trash2, Pin, StickyNote, Pencil } from "lucide-react";
 import { Card, Button, Modal, Input, EmptyState, Skeleton, Textarea } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
+import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { getAllNotes, getSubjects, createNote, deleteNote, updateNote, exportNotesMarkdown } from "@/app/actions";
 import { SubjectTopicSelect } from "@/components/subject-topic-select";
 import { TagInput } from "@/components/tag-input";
-import NotebookLMExportButton from "@/components/notebooklm-export-button";
 import { Markdown } from "@/components/markdown";
 import { showUndo } from "@/components/undo-toast";
 import { readableOn } from "@/lib/utils";
@@ -137,14 +137,12 @@ export default function NotesPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <RevealHeading text="NOTES" className="text-5xl lg:text-8xl" />
-            <p className="mt-4 text-sm text-muted-fg uppercase tracking-widest">
-              YOUR STUDY NOTES AND REFERENCE MATERIAL
-            </p>
+            <ScrambleSubtitle
+              text="YOUR STUDY NOTES AND REFERENCE MATERIAL"
+              className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
+            />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <NotebookLMExportButton
-              notes={notes.map((n) => ({ title: n.title, content: n.content || "" }))}
-            />
             <Button onClick={() => setModalOpen(true)}>
               <Plus size={16} />
               NEW NOTE
