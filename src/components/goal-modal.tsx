@@ -7,9 +7,9 @@
 import { useState } from "react";
 import { Modal, Input, Textarea, Button } from "@/components/ui";
 import { createGoal, updateGoal } from "@/app/actions";
-import type { GoalRec, GoalHorizon, SubjectRec } from "@/lib/db";
+import type { GoalRec, GoalHorizon, GoalRepeat, SubjectRec } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { Rocket, Flag } from "lucide-react";
+import { Rocket, ListTodo, Repeat } from "lucide-react";
 
 // Swatch palette drawn from theme tokens — resolved at runtime so every
 // theme recolors them. `null` = no custom color.
@@ -73,6 +73,7 @@ function GoalForm({
   const [description, setDescription] = useState(goal?.description ?? "");
   const [horizon, setHorizon] = useState<GoalHorizon>(goal?.horizon ?? "regular");
   const [dueDate, setDueDate] = useState(toDateInputValue(goal?.dueDate));
+  const [repeat, setRepeat] = useState<GoalRepeat | null>(goal?.repeat ?? null);
   const [subjectId, setSubjectId] = useState<string>(goal?.subjectId ?? "");
   const [color, setColor] = useState<string | null>(goal?.color ?? null);
   const [saving, setSaving] = useState(false);
@@ -93,6 +94,7 @@ function GoalForm({
           description: description.trim() || null,
           horizon,
           dueDate: due,
+          repeat,
           subjectId: subjectId || null,
           color,
         });
@@ -102,6 +104,7 @@ function GoalForm({
           description: description.trim() || undefined,
           horizon,
           dueDate: due,
+          repeat,
           subjectId: subjectId || null,
           color,
         });
@@ -141,7 +144,7 @@ function GoalForm({
             {(
               [
                 { id: "long", label: "Long-term", icon: Rocket },
-                { id: "regular", label: "Regular", icon: Flag },
+                { id: "regular", label: "Todo", icon: ListTodo },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -163,6 +166,43 @@ function GoalForm({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Repeat picker */}
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-fg">
+            <Repeat size={11} /> Repeats
+          </p>
+          <div className="inline-flex w-full rounded-full border border-glass-border bg-glass p-1">
+            {(
+              [
+                { id: null, label: "Never" },
+                { id: "daily", label: "Daily" },
+                { id: "weekly", label: "Weekly" },
+                { id: "monthly", label: "Monthly" },
+              ] as const
+            ).map(({ id, label }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setRepeat(id)}
+                className={cn(
+                  "relative flex flex-1 items-center justify-center rounded-full px-2 py-2 text-xs font-bold transition-colors",
+                  repeat === id ? "text-accent-fg" : "text-muted-fg hover:text-fg"
+                )}
+              >
+                {repeat === id && (
+                  <span className="absolute inset-0 rounded-full bg-accent" />
+                )}
+                <span className="relative z-10">{label}</span>
+              </button>
+            ))}
+          </div>
+          {repeat && (
+            <p className="mt-1.5 text-[11px] text-muted-fg">
+              Completing this todo reschedules it automatically and returns it to the backlog.
+            </p>
+          )}
         </div>
 
         {/* Due date + subject */}

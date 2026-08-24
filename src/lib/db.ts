@@ -117,17 +117,19 @@ export interface PomoPresetRec {
 }
 
 // ─── Goals (kanban todo) ─────────────────────────────────────────
-export type GoalHorizon = "long" | "regular";
+export type GoalHorizon = "long" | "regular"; // "regular" displays as "Todo"
 export type GoalStatus = "backlog" | "in_progress" | "done";
+export type GoalRepeat = "daily" | "weekly" | "monthly";
 
 export interface GoalRec {
   id: string;
   title: string;
   description?: string | null;
-  horizon: GoalHorizon;        // long = long-term vision, regular = normal
+  horizon: GoalHorizon;        // long = long-term vision, regular = todo
   status: GoalStatus;
   order: number;               // position within its status column
   dueDate?: Date | null;
+  repeat?: GoalRepeat | null;  // repeating todo — reschedules on completion
   subjectId?: string | null;   // optional link to a Subject
   color?: string | null;       // optional accent override
   createdAt: Date;

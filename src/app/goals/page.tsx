@@ -37,13 +37,13 @@ import {
   Calendar,
   Trash2,
   Pencil,
-  Flag,
+  ListTodo,
   Rocket,
+  Repeat,
   CheckSquare,
   Square,
   ChevronRight,
   ChevronLeft,
-  ListTodo,
 } from "lucide-react";
 
 // ─── Module-constant motion config (re-render replay pitfall) ─────
@@ -244,7 +244,7 @@ export default function GoalsPage() {
             [
               { id: "all", label: "All", icon: ListTodo },
               { id: "long", label: "Long-term", icon: Rocket },
-              { id: "regular", label: "Regular", icon: Flag },
+              { id: "regular", label: "Todo", icon: ListTodo },
             ] as const
           ).map(({ id, label, icon: Icon }) => (
             <button
@@ -279,7 +279,7 @@ export default function GoalsPage() {
         <EmptyState
           icon={<Target size={48} />}
           title="No goals yet"
-          description="Capture your long-term vision and regular targets, then move them across the board."
+          description="Capture your long-term vision and daily todos, then move them across the board."
           action={
             <Button
               onClick={() => {
@@ -372,7 +372,7 @@ export default function GoalsPage() {
                             </Badge>
                           ) : (
                             <Badge variant="flow">
-                              <Flag size={10} /> Regular
+                              <ListTodo size={10} /> Todo
                             </Badge>
                           )}
 
@@ -396,6 +396,12 @@ export default function GoalsPage() {
                               >
                                 <Calendar size={10} />
                                 {overdue ? `Overdue · ${formatDue(g.dueDate)}` : formatDue(g.dueDate)}
+                              </span>
+                            )}
+                            {g.repeat && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-flow/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-flow">
+                                <Repeat size={10} />
+                                {g.repeat}
                               </span>
                             )}
                             {subj && (

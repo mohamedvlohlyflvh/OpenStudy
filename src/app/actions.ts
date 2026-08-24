@@ -20,6 +20,7 @@ import {
   type MilestoneRec,
   type GoalHorizon,
   type GoalStatus,
+  type GoalRepeat,
 } from "@/lib/db";
 import {
   subjectSchema,
@@ -1096,6 +1097,7 @@ export async function createGoal(data: {
   description?: string;
   horizon: GoalHorizon;
   dueDate?: Date | null;
+  repeat?: GoalRepeat | null;
   subjectId?: string | null;
   color?: string | null;
 }): Promise<GoalRec> {
@@ -1109,6 +1111,7 @@ export async function createGoal(data: {
     status: "backlog",
     order: inBacklog,
     dueDate: data.dueDate ?? null,
+    repeat: data.repeat ?? null,
     subjectId: data.subjectId ?? null,
     color: data.color ?? null,
     createdAt: now,
@@ -1126,6 +1129,7 @@ export async function updateGoal(
     description: string | null;
     horizon: GoalHorizon;
     dueDate: Date | null;
+    repeat: GoalRepeat | null;
     subjectId: string | null;
     color: string | null;
   }>
@@ -1133,10 +1137,37 @@ export async function updateGoal(
   await db.goals.update(id, { ...data, updatedAt: new Date() });
 }
 
+// Advance a date by one repeat interval (daily/weekly/monthly).
+function nextRepeatDate(base: Date, repeat: GoalRepeat): Date {
+  const d = new Date(base);
+  if (repeat === "daily") d.setDate(d.getDate() + 1);
+  else if (repeat === "weekly") d.setDate(d.getDate() + 7);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
 export async function moveGoal(id: string, status: GoalStatus, index: number): Promise<void> {
   // Pull the goal, reindex the target column, insert at `index`.
   const goal = await db.goals.get(id);
   if (!goal) return;
+
+  // Repeating todo completed → reschedule and bounce back to the backlog
+  // for the next cycle instead of parking it in Done.
+  if (status === "done" && goal.repeat) {
+    const base = goal.dueDate && new Date(goal.dueDate).getTime() > Date.now()
+      ? new Date(goal.dueDate)
+      : new Date();
+    const backlogCount = await db.goals.where("status").equals("backlog").count();
+    await db.goals.update(id, {
+      status: "backlog",
+      order: backlogCount,
+      dueDate: nextRepeatDate(base, goal.repeat),
+      completedAt: null,
+      updatedAt: new Date(),
+    });
+    return;
+  }
+
   const col = await db.goals.where("status").equals(status).sortBy("order");
   const rest = col.filter((g) => g.id !== id);
   const clamped = Math.max(0, Math.min(index, rest.length));
@@ -1230,6 +1261,7 @@ export type FullExport = {
     status: GoalStatus;
     order: number;
     dueDate?: string | null;
+    repeat?: GoalRepeat | null;
     color?: string | null;
     completedAt?: string | null;
     milestones: { title: string; done: boolean; order: number }[];
@@ -1316,6 +1348,7 @@ export async function exportAllData(): Promise<string> {
       status: g.status,
       order: g.order,
       dueDate: g.dueDate ? new Date(g.dueDate).toISOString() : null,
+      repeat: g.repeat ?? null,
       color: g.color,
       completedAt: g.completedAt ? new Date(g.completedAt).toISOString() : null,
       milestones: ms.map((m) => ({ title: m.title, done: m.done, order: m.order })),
@@ -1406,6 +1439,7 @@ export async function importAllData(json: string): Promise<{ imported: string }>
         description: g.description ?? undefined,
         horizon: g.horizon,
         dueDate: g.dueDate ? new Date(g.dueDate) : null,
+        repeat: g.repeat ?? null,
         color: g.color ?? null,
       });
       await moveGoal(goal.id, g.status, g.order);
