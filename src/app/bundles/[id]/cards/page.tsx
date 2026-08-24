@@ -301,14 +301,14 @@ export default function BundleCardsPage() {
               placeholder="SEARCH CARDS..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+              className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:outline-none"
             />
           </div>
           <select
             value={filterTag}
             onChange={(e) => setFilterTag(e.target.value)}
             aria-label="Filter cards by tag"
-            className="h-10 border-2 border-border bg-bg px-3 text-xs font-bold uppercase tracking-widest text-fg focus:border-accent focus:outline-none"
+            className="h-10 border-2 border-border bg-bg px-3 text-xs font-bold uppercase tracking-widest text-fg focus:outline-none"
           >
             <option value="all" className="bg-bg text-fg">
               ALL TAGS

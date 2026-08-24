@@ -54,7 +54,7 @@ export function SubjectTopicSelect({
         value={selectedSubject}
         onChange={(e) => setSelectedSubject(e.target.value)}
         aria-label="Select a subject"
-        className="flex h-12 w-full border-b-2 border-border bg-bg px-0 py-2 text-lg font-bold uppercase tracking-tight text-fg focus:border-accent focus:outline-none"
+        className="flex h-12 w-full border-b-2 border-border bg-bg px-0 py-2 text-lg font-bold uppercase tracking-tight text-fg focus:outline-none"
       >
         <option value="" className="bg-bg text-fg">
           SELECT A SUBJECT...

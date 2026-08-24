@@ -279,7 +279,7 @@ export default function SessionsPage() {
               onChange={(e) => setSessionTitle(e.target.value)}
               placeholder={mode === "pomodoro" ? "AUTO-NAMED FROM CYCLES IF EMPTY" : "E.G. REVIEWING CHAPTER 5"}
               disabled={anyRunning}
-              className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white placeholder-zinc-600 rounded-lg px-4 py-3 text-sm transition-all outline-none disabled:opacity-50"
+              className="w-full bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 rounded-lg px-4 py-3 text-sm transition-all outline-none disabled:opacity-50"
             />
           </div>
           <div>
@@ -290,7 +290,7 @@ export default function SessionsPage() {
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
               disabled={anyRunning}
-              className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm transition-all outline-none disabled:opacity-50 appearance-none"
+              className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-lg px-4 py-3 text-sm transition-all outline-none disabled:opacity-50 appearance-none"
               style={{ colorScheme: "dark" }}
             >
               <option value="" className="bg-zinc-950 text-white">
@@ -388,7 +388,7 @@ export default function SessionsPage() {
                     value={workMin}
                     onChange={(e) => applyConfig({ workMin: parseInt(e.target.value, 10) || 1 })}
                     disabled={pomo.running}
-                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                    className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
                   />
                 </div>
                 <div>
@@ -402,7 +402,7 @@ export default function SessionsPage() {
                     value={breakMin}
                     onChange={(e) => applyConfig({ breakMin: parseInt(e.target.value, 10) || 1 })}
                     disabled={pomo.running}
-                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                    className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
                   />
                 </div>
                 <div>
@@ -416,7 +416,7 @@ export default function SessionsPage() {
                     value={longBreakMin}
                     onChange={(e) => applyConfig({ longBreakMin: parseInt(e.target.value, 10) || 0 })}
                     disabled={pomo.running}
-                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                    className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
                   />
                 </div>
                 <div>
@@ -432,7 +432,7 @@ export default function SessionsPage() {
                       applyConfig({ cyclesBeforeLongBreak: parseInt(e.target.value, 10) || 0 })
                     }
                     disabled={pomo.running}
-                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
+                    className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-lg px-4 py-3 text-sm font-mono tabular-nums transition-all outline-none disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -465,7 +465,7 @@ export default function SessionsPage() {
                   placeholder="SAVE THIS SETUP AS… (E.G. DEEP WORK 50/10)"
                   disabled={pomo.running}
                   maxLength={50}
-                  className="w-full bg-zinc-950 border border-zinc-800 focus:border-yellow-400 text-white placeholder-zinc-600 rounded-lg px-4 py-2.5 text-xs font-bold uppercase tracking-widest transition-all outline-none disabled:opacity-50"
+                  className="w-full bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 rounded-lg px-4 py-2.5 text-xs font-bold uppercase tracking-widest transition-all outline-none disabled:opacity-50"
                 />
                 <button
                   onClick={saveCurrentAsPreset}

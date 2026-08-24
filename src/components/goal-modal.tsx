@@ -175,7 +175,7 @@ function GoalForm({
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="glass-inset flex h-12 w-full rounded-xl border-border px-4 py-2 text-base font-medium tracking-tight text-fg transition-colors duration-200 focus:border-accent/60 focus:outline-none"
+              className="glass-inset flex h-12 w-full rounded-xl border-border px-4 py-2 text-base font-medium tracking-tight text-fg transition-colors duration-200 focus:outline-none"
             />
           </div>
           <div className="space-y-1.5">
@@ -185,7 +185,7 @@ function GoalForm({
             <select
               value={subjectId}
               onChange={(e) => setSubjectId(e.target.value)}
-              className="glass-inset flex h-12 w-full rounded-xl border-border px-4 py-2 text-base font-medium tracking-tight text-fg transition-colors duration-200 focus:border-accent/60 focus:outline-none"
+              className="glass-inset flex h-12 w-full rounded-xl border-border px-4 py-2 text-base font-medium tracking-tight text-fg transition-colors duration-200 focus:outline-none"
             >
               <option value="">No subject</option>
               {subjects.map((s) => (

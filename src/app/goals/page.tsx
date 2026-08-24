@@ -503,7 +503,7 @@ export default function GoalsPage() {
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") addStep(g.id);
                                 }}
-                                className="w-full rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-fg placeholder:text-muted-fg/60 focus:border-border focus:outline-none"
+                                className="w-full rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-fg placeholder:text-muted-fg/60 focus:outline-none"
                               />
                             </div>
                           )}

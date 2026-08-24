@@ -581,13 +581,11 @@ p.font-mono,
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Focus ring polish (2-layer, visible on every surface) ────── */
-/* In @layer base so per-element utilities (e.g. focus-visible:shadow-none)
-   can opt out — unlayered CSS would outrank the utilities layer. */
+/* ─── Focus ring: removed by user request (no focus borders) ───── */
 @layer base {
   :where(a, button, input, select, textarea, [tabindex]):focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+    box-shadow: none;
   }
 }
 

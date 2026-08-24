@@ -556,7 +556,7 @@ function FlashcardsContent() {
               setStatsLoaded(false);
             }}
             aria-label="Select bundle to study"
-            className="flex h-10 items-center gap-2 border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:border-accent focus:outline-none"
+            className="flex h-10 items-center gap-2 border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:outline-none"
           >
             <option value="" className="bg-bg text-fg">ALL BUNDLES</option>
             {bundles.map((b) => (
@@ -947,14 +947,14 @@ function FlashcardsContent() {
                 placeholder={browseScope === "bundles" ? "SEARCH BUNDLES..." : "SEARCH ALL CARDS..."}
                 value={browseQuery}
                 onChange={(e) => setBrowseQuery(e.target.value)}
-                className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+                className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:outline-none"
               />
             </div>
             <select
               value={browseScope}
               onChange={(e) => setBrowseScope(e.target.value as "cards" | "bundles")}
               aria-label="Search scope: cards or bundles"
-              className="h-10 border-2 border-border bg-bg px-3 text-xs font-bold uppercase tracking-widest text-fg focus:border-accent focus:outline-none"
+              className="h-10 border-2 border-border bg-bg px-3 text-xs font-bold uppercase tracking-widest text-fg focus:outline-none"
             >
               <option value="cards" className="bg-bg text-fg">SEARCH CARDS</option>
               <option value="bundles" className="bg-bg text-fg">SEARCH BUNDLES</option>
@@ -1302,7 +1302,7 @@ function FlashcardsContent() {
             <input
               value={editBundleName}
               onChange={(e) => setEditBundleName(e.target.value)}
-              className="h-10 w-full border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:border-accent focus:outline-none"
+              className="h-10 w-full border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:outline-none"
             />
           </div>
           <div className="space-y-2">
@@ -1310,7 +1310,7 @@ function FlashcardsContent() {
             <input
               value={editBundleDesc}
               onChange={(e) => setEditBundleDesc(e.target.value)}
-              className="h-10 w-full border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:border-accent focus:outline-none"
+              className="h-10 w-full border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:outline-none"
             />
           </div>
           <BundleColorPicker value={editBundleColor} onChange={setEditBundleColor} />
@@ -1369,7 +1369,7 @@ function FlashcardsContent() {
             <select
               value={batchMoveTarget}
               onChange={(e) => setBatchMoveTarget(e.target.value)}
-              className="h-10 w-full border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:border-accent focus:outline-none"
+              className="h-10 w-full border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:outline-none"
             >
               <option value="" className="bg-bg text-fg">NO BUNDLE (UNASSIGNED)</option>
               {bundles.map((b) => (
