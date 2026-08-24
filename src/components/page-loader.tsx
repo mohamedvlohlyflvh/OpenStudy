@@ -15,6 +15,7 @@ export type LoaderVariant =
   | "flashcards"
   | "sessions"
   | "settings"
+  | "kanban"    // goals
   | "cards";    // bundles/[id]/cards
 
 function LoaderBar({ label }: { label: string }) {
@@ -304,6 +305,48 @@ function CardsBody() {
 
 /* ─── Public component ─────────────────────────────────────────── */
 
+function KanbanBody() {
+  /* Mirrors /goals: stats row + 3 kanban columns with card blocks. */
+  const colHeights = [3, 2, 1];
+  return (
+    <>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="glass rounded-2xl p-4">
+            <Skeleton className="h-2.5 w-12" />
+            <Skeleton className="mt-2 h-8 w-10" />
+          </div>
+        ))}
+      </div>
+      <div className="mb-6 flex items-center justify-between">
+        <Skeleton className="h-9 w-56 rounded-full" />
+        <Skeleton className="h-3 w-20" />
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {colHeights.map((n, ci) => (
+          <div key={ci} className="glass min-h-[200px] rounded-2xl p-3">
+            <div className="mb-3 flex items-center gap-2 px-1">
+              <Skeleton className="h-2 w-2 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-6 rounded-full" />
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: n }).map((_, i) => (
+                <div key={i} className="rounded-2xl border border-border p-4">
+                  <Skeleton className="h-3 w-16 rounded-full" />
+                  <Skeleton className="mt-2 h-4 w-3/4" />
+                  <Skeleton className="mt-2 h-3 w-1/2" />
+                  <Skeleton className="mt-3 h-1 w-full rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 const LABELS: Record<LoaderVariant, string> = {
   generic: "STUDYMAX",
   dashboard: "DASHBOARD",
@@ -312,6 +355,7 @@ const LABELS: Record<LoaderVariant, string> = {
   flashcards: "FLASHCARDS",
   sessions: "SESSIONS",
   settings: "SETTINGS",
+  kanban: "GOALS",
   cards: "CARDS",
 };
 
@@ -335,6 +379,7 @@ export function PageLoader({
       {variant === "flashcards" && <FlashcardsBody />}
       {variant === "sessions" && <SessionsBody />}
       {variant === "settings" && <SettingsBody />}
+      {variant === "kanban" && <KanbanBody />}
       {variant === "cards" && <CardsBody />}
     </div>
   );

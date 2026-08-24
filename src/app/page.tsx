@@ -9,6 +9,7 @@ import {
   Layers,
   Sparkles,
   StickyNote,
+  Target,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -19,7 +20,7 @@ import { DailyProgress } from "@/components/daily-progress";
 import { WeeklyAnalytics } from "@/components/weekly-analytics";
 import { DeadlineList } from "@/components/deadline-list";
 import { PageLoader } from "@/components/page-loader";
-import { getDashboardStats, getTodayProgress, getWeeklyAnalytics } from "./actions";
+import { getDashboardStats, getTodayProgress, getWeeklyAnalytics, getGoals } from "./actions";
 import { formatDuration } from "@/lib/utils";
 
 type Stats = Awaited<ReturnType<typeof getDashboardStats>>;
@@ -43,11 +44,18 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [weekly, setWeekly] = useState<Weekly | null>(null);
   const [today, setToday] = useState<Today | null>(null);
+  const [goalCounts, setGoalCounts] = useState<{ active: number; total: number } | null>(null);
 
   useEffect(() => {
     getDashboardStats().then(setStats);
     getWeeklyAnalytics().then(setWeekly);
     getTodayProgress().then(setToday);
+    getGoals().then((goals) =>
+      setGoalCounts({
+        active: goals.filter((g) => g.status === "in_progress").length,
+        total: goals.length,
+      })
+    );
   }, []);
 
   if (!stats) {
@@ -127,6 +135,32 @@ export default function DashboardPage() {
             <DeadlineList deadlines={weekly?.deadlines ?? []} />
           </motion.div>
         </div>
+
+        {/* Goals shortcut */}
+        <motion.div variants={item} className="mb-6">
+          <Link href="/goals" aria-label="Open goals board">
+            <Card hover className="flex flex-wrap items-center justify-between gap-4 !p-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                  <Target size={17} aria-hidden />
+                </span>
+                <div>
+                  <p className="font-semibold tracking-tight">Goals</p>
+                  <p className="text-[11px] uppercase tracking-widest text-muted-fg">
+                    Long-term vision · kanban board
+                  </p>
+                </div>
+              </div>
+              <span className="font-mono text-xs tabular-nums text-muted-fg">
+                {goalCounts
+                  ? goalCounts.total === 0
+                    ? "Start planning →"
+                    : `${goalCounts.active} active · ${goalCounts.total} total`
+                  : "…"}
+              </span>
+            </Card>
+          </Link>
+        </motion.div>
 
         {/* Subject shortcuts */}
         {stats.subjectBreakdown.length > 0 && (

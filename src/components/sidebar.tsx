@@ -10,6 +10,7 @@ import {
   Brain,
   StickyNote,
   Timer,
+  Target,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/flashcards", label: "Flashcards", icon: Brain },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/sessions", label: "Sessions", icon: Timer },
+  { href: "/goals", label: "Goals", icon: Target },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

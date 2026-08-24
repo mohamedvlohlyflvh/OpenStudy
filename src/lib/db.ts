@@ -116,6 +116,34 @@ export interface PomoPresetRec {
   createdAt: Date;
 }
 
+// ─── Goals (kanban todo) ─────────────────────────────────────────
+export type GoalHorizon = "long" | "regular";
+export type GoalStatus = "backlog" | "in_progress" | "done";
+
+export interface GoalRec {
+  id: string;
+  title: string;
+  description?: string | null;
+  horizon: GoalHorizon;        // long = long-term vision, regular = normal
+  status: GoalStatus;
+  order: number;               // position within its status column
+  dueDate?: Date | null;
+  subjectId?: string | null;   // optional link to a Subject
+  color?: string | null;       // optional accent override
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt?: Date | null;
+}
+
+export interface MilestoneRec {
+  id: string;
+  goalId: string;
+  title: string;
+  done: boolean;
+  order: number;
+  createdAt: Date;
+}
+
 // ─── The database ────────────────────────────────────────────────
 // Dexie/IndexedDB is the SINGLE source of truth — fully local,
 // fully offline, per-device. No server database anywhere.
@@ -132,6 +160,8 @@ class StudyMaxDB extends Dexie {
   reviewLogs!: Table<ReviewLogRec, string>;
   studySessions!: Table<StudySessionRec, string>;
   pomoPresets!: Table<PomoPresetRec, string>;
+  goals!: Table<GoalRec, string>;
+  milestones!: Table<MilestoneRec, string>;
 
   constructor() {
     super("studymax");
@@ -151,6 +181,11 @@ class StudyMaxDB extends Dexie {
     // v2: custom pomodoro presets (additive — existing data untouched)
     this.version(2).stores({
       pomoPresets: "id, createdAt",
+    });
+    // v3: goals kanban — long-term + regular goals with milestones (additive)
+    this.version(3).stores({
+      goals: "id, status, horizon, subjectId, dueDate, createdAt, order",
+      milestones: "id, goalId, order",
     });
   }
 }

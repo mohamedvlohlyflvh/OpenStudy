@@ -1,0 +1,587 @@
+"use client";
+
+// /goals — advanced kanban todo for future goals.
+// Two horizons (LONG-TERM / REGULAR), three status columns
+// (BACKLOG → IN PROGRESS → DONE), HTML5 drag-and-drop on desktop +
+// explicit move buttons for touch, milestone checklists with progress.
+// Aurora Glass: semantic tokens only (accent/flow/grow/danger) so all
+// 12 themes apply automatically.
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import {
+  getGoals,
+  getAllMilestones,
+  getSubjects,
+  moveGoal,
+  deleteGoal,
+  createMilestone,
+  toggleMilestone,
+  deleteMilestone,
+} from "@/app/actions";
+import type {
+  GoalRec,
+  MilestoneRec,
+  GoalStatus,
+  GoalHorizon,
+  SubjectRec,
+} from "@/lib/db";
+import { RevealHeading } from "@/components/reveal-heading";
+import { ScrambleSubtitle } from "@/components/scramble-subtitle";
+import { Button, Badge, Card, Modal, EmptyState } from "@/components/ui";
+import { GoalModal } from "@/components/goal-modal";
+import { cn } from "@/lib/utils";
+import {
+  Target,
+  Plus,
+  Calendar,
+  Trash2,
+  Pencil,
+  Flag,
+  Rocket,
+  CheckSquare,
+  Square,
+  ChevronRight,
+  ChevronLeft,
+  ListTodo,
+} from "lucide-react";
+
+// ─── Module-constant motion config (re-render replay pitfall) ─────
+const CARD_TRANSITION = { type: "spring", stiffness: 320, damping: 28 } as const;
+const CARD_VARIANTS = {
+  hidden: { opacity: 0, y: 14 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { ...CARD_TRANSITION, delay: Math.min(i * 0.04, 0.4) },
+  }),
+};
+
+const COLUMNS: { id: GoalStatus; label: string; hint: string; dot: string }[] = [
+  { id: "backlog", label: "Backlog", hint: "Someday / not started", dot: "bg-muted-fg" },
+  { id: "in_progress", label: "In progress", hint: "Actively working on", dot: "bg-flow" },
+  { id: "done", label: "Done", hint: "Achieved", dot: "bg-grow" },
+];
+
+const PREV_STATUS: Partial<Record<GoalStatus, GoalStatus>> = {
+  in_progress: "backlog",
+  done: "in_progress",
+};
+const NEXT_STATUS: Partial<Record<GoalStatus, GoalStatus>> = {
+  backlog: "in_progress",
+  in_progress: "done",
+};
+
+type HorizonFilter = "all" | GoalHorizon;
+
+function isOverdue(g: GoalRec): boolean {
+  if (!g.dueDate || g.status === "done") return false;
+  const due = new Date(g.dueDate);
+  due.setHours(23, 59, 59, 999);
+  return due.getTime() < Date.now();
+}
+
+function formatDue(d: Date): string {
+  const dt = new Date(d);
+  return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+}
+
+export default function GoalsPage() {
+  const [goals, setGoals] = useState<GoalRec[]>([]);
+  const [milestones, setMilestones] = useState<MilestoneRec[]>([]);
+  const [subjects, setSubjects] = useState<SubjectRec[]>([]);
+  const [filter, setFilter] = useState<HorizonFilter>("all");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<GoalRec | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<GoalRec | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [newStep, setNewStep] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropHint, setDropHint] = useState<{ col: GoalStatus; index: number } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [g, m, s] = await Promise.all([getGoals(), getAllMilestones(), getSubjects()]);
+    setGoals(g);
+    setMilestones(m);
+    setSubjects(s);
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    // .then callback — setState lives in the callback, not the effect body
+    // (React golden pattern for initial loads in this app).
+    Promise.all([getGoals(), getAllMilestones(), getSubjects()]).then(
+      ([g, m, s]) => {
+        setGoals(g);
+        setMilestones(m);
+        setSubjects(s);
+        setLoaded(true);
+      }
+    );
+  }, []);
+
+  // Derived — declared before any effect that reads them.
+  const visible = useMemo(
+    () => goals.filter((g) => filter === "all" || g.horizon === filter),
+    [goals, filter]
+  );
+  const byColumn = useMemo(() => {
+    const map: Record<GoalStatus, GoalRec[]> = { backlog: [], in_progress: [], done: [] };
+    for (const g of visible) map[g.status].push(g);
+    for (const k of Object.keys(map) as GoalStatus[]) map[k].sort((a, b) => a.order - b.order);
+    return map;
+  }, [visible]);
+  const stats = useMemo(
+    () => ({
+      total: goals.length,
+      active: goals.filter((g) => g.status === "in_progress").length,
+      done: goals.filter((g) => g.status === "done").length,
+      overdue: goals.filter(isOverdue).length,
+    }),
+    [goals]
+  );
+
+  // ─── Drag & drop (desktop) ───────────────────────────────────────
+  const onDragStart = (e: React.DragEvent, id: string) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  };
+  const onDragOverSlot = (e: React.DragEvent, col: GoalStatus, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropHint((prev) => (prev?.col === col && prev.index === index ? prev : { col, index }));
+  };
+  const onDropSlot = async (e: React.DragEvent, col: GoalStatus, index: number) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain") || dragId;
+    setDragId(null);
+    setDropHint(null);
+    if (!id) return;
+    await moveGoal(id, col, index);
+    await refresh();
+  };
+  const onDragEnd = () => {
+    setDragId(null);
+    setDropHint(null);
+  };
+
+  // ─── Touch / keyboard fallback ───────────────────────────────────
+  const moveByButton = async (g: GoalRec, dir: "prev" | "next") => {
+    const target = dir === "prev" ? PREV_STATUS[g.status] : NEXT_STATUS[g.status];
+    if (!target) return;
+    await moveGoal(g.id, target, 0);
+    await refresh();
+  };
+
+  // ─── Milestones ────────────────────────────────────────────────────
+  const addStep = async (goalId: string) => {
+    if (!newStep.trim()) return;
+    await createMilestone(goalId, newStep.trim());
+    setNewStep("");
+    await refresh();
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    await deleteGoal(deleteTarget.id);
+    setDeleteTarget(null);
+    await refresh();
+  };
+
+  const subjectOf = (id?: string | null) => subjects.find((s) => s.id === id);
+
+  return (
+    <div className="p-8 lg:p-12">
+      {/* Header */}
+      <div className="mb-10">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <RevealHeading text="GOALS" className="text-5xl lg:text-8xl" />
+            <ScrambleSubtitle
+              text="LONG-TERM VISION, TRACKED LIKE A KANBAN"
+              className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
+            />
+          </div>
+          <Button
+            onClick={() => {
+              setEditingGoal(null);
+              setModalOpen(true);
+            }}
+          >
+            <Plus size={16} />
+            New goal
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {(
+          [
+            { label: "Total", value: stats.total, tone: "" },
+            { label: "Active", value: stats.active, tone: "text-flow" },
+            { label: "Done", value: stats.done, tone: "text-grow" },
+            { label: "Overdue", value: stats.overdue, tone: stats.overdue > 0 ? "text-danger" : "" },
+          ] as const
+        ).map((s) => (
+          <div key={s.label} className="glass rounded-2xl p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+              {s.label}
+            </p>
+            <p className={cn("font-display mt-1 text-3xl font-bold tabular-nums", s.tone)}>
+              {s.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Horizon filter */}
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-full border border-glass-border bg-glass p-1">
+          {(
+            [
+              { id: "all", label: "All", icon: ListTodo },
+              { id: "long", label: "Long-term", icon: Rocket },
+              { id: "regular", label: "Regular", icon: Flag },
+            ] as const
+          ).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setFilter(id)}
+              className={cn(
+                "relative flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition-colors",
+                filter === id ? "text-accent-fg" : "text-muted-fg hover:text-fg"
+              )}
+            >
+              {filter === id && (
+                <motion.span
+                  layoutId="goal-filter-pill"
+                  className="absolute inset-0 rounded-full bg-accent"
+                  transition={CARD_TRANSITION}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                {Icon && <Icon size={12} />}
+                {label}
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="font-mono text-xs tabular-nums text-muted-fg">
+          {visible.length} / {goals.length} goals
+        </p>
+      </div>
+
+      {/* Board */}
+      {!loaded ? null : goals.length === 0 ? (
+        <EmptyState
+          icon={<Target size={48} />}
+          title="No goals yet"
+          description="Capture your long-term vision and regular targets, then move them across the board."
+          action={
+            <Button
+              onClick={() => {
+                setEditingGoal(null);
+                setModalOpen(true);
+              }}
+            >
+              <Plus size={16} />
+              Create your first goal
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3">
+          {COLUMNS.map((col) => {
+            const cards = byColumn[col.id];
+            return (
+              <div key={col.id} className="glass min-h-[200px] rounded-2xl p-3">
+                {/* Column header */}
+                <div className="mb-3 flex items-center gap-2 px-1">
+                  <span className={cn("h-1.5 w-1.5 rounded-full", col.dot)} />
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted-fg">
+                    {col.label}
+                  </span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-fg">
+                    {cards.length}
+                  </span>
+                  <span className="ml-auto hidden text-[10px] text-muted-fg lg:block">
+                    {col.hint}
+                  </span>
+                </div>
+
+                {/* Drop slot 0 */}
+                <DropSlot
+                  active={dropHint?.col === col.id && dropHint.index === 0}
+                  onDragOver={(e) => onDragOverSlot(e, col.id, 0)}
+                  onDrop={(e) => onDropSlot(e, col.id, 0)}
+                />
+
+                {cards.map((g, i) => {
+                  const ms = milestones.filter((m) => m.goalId === g.id);
+                  const doneMs = ms.filter((m) => m.done).length;
+                  const overdue = isOverdue(g);
+                  const subj = subjectOf(g.subjectId);
+                  const expanded = expandedId === g.id;
+                  return (
+                    <div key={g.id}>
+                      <motion.div
+                        custom={i}
+                        variants={CARD_VARIANTS}
+                        initial="hidden"
+                        animate="show"
+                      >
+                        <Card
+                          hover
+                          data-goal-id={g.id}
+                          className={cn(
+                            "group relative cursor-grab p-4",
+                            dragId === g.id && "opacity-40"
+                          )}
+                          draggable
+                          onDragStart={(e) => onDragStart(e, g.id)}
+                          onDragEnd={onDragEnd}
+                        >
+                          {/* Hover actions */}
+                          <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100">
+                            <button
+                              aria-label="Edit goal"
+                              onClick={() => {
+                                setEditingGoal(g);
+                                setModalOpen(true);
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-glass-border bg-glass text-muted-fg transition-colors hover:text-accent"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              aria-label="Delete goal"
+                              onClick={() => setDeleteTarget(g)}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-glass-border bg-glass text-muted-fg transition-colors hover:text-danger"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+
+                          {/* Horizon badge */}
+                          {g.horizon === "long" ? (
+                            <Badge variant="accent">
+                              <Rocket size={10} /> Long-term
+                            </Badge>
+                          ) : (
+                            <Badge variant="flow">
+                              <Flag size={10} /> Regular
+                            </Badge>
+                          )}
+
+                          <h3 className="mt-2 pr-14 font-semibold tracking-tight text-fg">
+                            {g.title}
+                          </h3>
+                          {g.description && (
+                            <p className="mt-1 line-clamp-2 text-sm text-muted-fg">
+                              {g.description}
+                            </p>
+                          )}
+
+                          {/* Meta row */}
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {g.dueDate && (
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-fg",
+                                  overdue && "border-danger/40 text-danger"
+                                )}
+                              >
+                                <Calendar size={10} />
+                                {overdue ? `Overdue · ${formatDue(g.dueDate)}` : formatDue(g.dueDate)}
+                              </span>
+                            )}
+                            {subj && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-fg">
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full"
+                                  style={{ background: subj.color }}
+                                />
+                                {subj.name}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Milestone progress */}
+                          {ms.length > 0 && (
+                            <div className="mt-3">
+                              <div className="h-1 overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="h-full rounded-full bg-flow transition-all"
+                                  style={{ width: `${(doneMs / ms.length) * 100}%` }}
+                                />
+                              </div>
+                              <p className="mt-1 font-mono text-[10px] tabular-nums text-muted-fg">
+                                {doneMs}/{ms.length} steps
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Footer row: expand + move buttons */}
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <button
+                              onClick={() => setExpandedId(expanded ? null : g.id)}
+                              className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-fg transition-colors hover:text-accent"
+                            >
+                              <ChevronRight
+                                size={12}
+                                className={cn("transition-transform", expanded && "rotate-90")}
+                              />
+                              Steps
+                            </button>
+                            <div className="flex gap-1">
+                              {PREV_STATUS[g.status] && (
+                                <button
+                                  aria-label="Move to previous column"
+                                  onClick={() => moveByButton(g, "prev")}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full border border-glass-border bg-glass text-muted-fg transition-colors hover:text-accent"
+                                >
+                                  <ChevronLeft size={12} />
+                                </button>
+                              )}
+                              {NEXT_STATUS[g.status] && (
+                                <button
+                                  aria-label="Move to next column"
+                                  onClick={() => moveByButton(g, "next")}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full border border-glass-border bg-glass text-muted-fg transition-colors hover:text-accent"
+                                >
+                                  <ChevronRight size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Milestone checklist */}
+                          {expanded && (
+                            <div className="mt-3 space-y-1.5 border-t border-border pt-3">
+                              {ms.map((m) => (
+                                <div key={m.id} className="group/ms flex items-center gap-2">
+                                  <button
+                                    aria-label={m.done ? "Mark step not done" : "Mark step done"}
+                                    onClick={async () => {
+                                      await toggleMilestone(m.id, !m.done);
+                                      await refresh();
+                                    }}
+                                    className={cn(
+                                      "shrink-0 transition-colors",
+                                      m.done ? "text-flow" : "text-muted-fg hover:text-fg"
+                                    )}
+                                  >
+                                    {m.done ? <CheckSquare size={14} /> : <Square size={14} />}
+                                  </button>
+                                  <span
+                                    className={cn(
+                                      "flex-1 text-sm",
+                                      m.done ? "text-muted-fg line-through" : "text-fg"
+                                    )}
+                                  >
+                                    {m.title}
+                                  </span>
+                                  <button
+                                    aria-label="Delete step"
+                                    onClick={async () => {
+                                      await deleteMilestone(m.id);
+                                      await refresh();
+                                    }}
+                                    className="text-muted-fg opacity-0 transition-opacity group-hover/ms:opacity-100 hover:text-danger"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              ))}
+                              <input
+                                placeholder="Add a step…"
+                                value={expanded ? newStep : ""}
+                                onChange={(e) => setNewStep(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") addStep(g.id);
+                                }}
+                                className="w-full rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-fg placeholder:text-muted-fg/60 focus:border-border focus:outline-none"
+                              />
+                            </div>
+                          )}
+                        </Card>
+                      </motion.div>
+
+                      {/* Drop slot after each card */}
+                      <DropSlot
+                        active={dropHint?.col === col.id && dropHint.index === i + 1}
+                        onDragOver={(e) => onDragOverSlot(e, col.id, i + 1)}
+                        onDrop={(e) => onDropSlot(e, col.id, i + 1)}
+                      />
+                    </div>
+                  );
+                })}
+
+                {cards.length === 0 && (
+                  <p className="px-1 py-6 text-center text-xs text-muted-fg">
+                    {filter !== "all" ? "Nothing here for this filter" : "Drop goals here"}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modals */}
+      <GoalModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        goal={editingGoal}
+        subjects={subjects}
+        onSaved={refresh}
+      />
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete goal?"
+      >
+        <p className="text-sm text-muted-fg">
+          “{deleteTarget?.title}” and all of its steps will be removed permanently.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={confirmDelete}>
+            <Trash2 size={14} />
+            Delete goal
+          </Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ─── Drop slot between cards ───────────────────────────────────────
+function DropSlot({
+  active,
+  onDragOver,
+  onDrop,
+}: {
+  active: boolean;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+}) {
+  return (
+    <div
+      data-drop-slot
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={cn(
+        "rounded-xl transition-all duration-150",
+        active
+          ? "my-1 h-10 rounded-xl border-2 border-dashed border-flow/60 bg-flow/5"
+          : "h-2"
+      )}
+    />
+  );
+}

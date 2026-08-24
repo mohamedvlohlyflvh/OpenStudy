@@ -16,6 +16,10 @@ import {
   type StudySessionRec,
   type ReviewLogRec,
   type PomoPresetRec,
+  type GoalRec,
+  type MilestoneRec,
+  type GoalHorizon,
+  type GoalStatus,
 } from "@/lib/db";
 import {
   subjectSchema,
@@ -1081,6 +1085,114 @@ export async function batchMoveCards(ids: string[], targetBundleId: string | nul
   return { count: ids.length };
 }
 
+// ─── Goals (kanban todo) ─────────────────────────────────────────
+
+export async function getGoals(): Promise<GoalRec[]> {
+  return db.goals.orderBy("createdAt").toArray();
+}
+
+export async function createGoal(data: {
+  title: string;
+  description?: string;
+  horizon: GoalHorizon;
+  dueDate?: Date | null;
+  subjectId?: string | null;
+  color?: string | null;
+}): Promise<GoalRec> {
+  const inBacklog = await db.goals.where("status").equals("backlog").count();
+  const now = new Date();
+  const goal: GoalRec = {
+    id: uid(),
+    title: data.title.trim(),
+    description: data.description?.trim() || null,
+    horizon: data.horizon,
+    status: "backlog",
+    order: inBacklog,
+    dueDate: data.dueDate ?? null,
+    subjectId: data.subjectId ?? null,
+    color: data.color ?? null,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+  };
+  await db.goals.add(goal);
+  return goal;
+}
+
+export async function updateGoal(
+  id: string,
+  data: Partial<{
+    title: string;
+    description: string | null;
+    horizon: GoalHorizon;
+    dueDate: Date | null;
+    subjectId: string | null;
+    color: string | null;
+  }>
+): Promise<void> {
+  await db.goals.update(id, { ...data, updatedAt: new Date() });
+}
+
+export async function moveGoal(id: string, status: GoalStatus, index: number): Promise<void> {
+  // Pull the goal, reindex the target column, insert at `index`.
+  const goal = await db.goals.get(id);
+  if (!goal) return;
+  const col = await db.goals.where("status").equals(status).sortBy("order");
+  const rest = col.filter((g) => g.id !== id);
+  const clamped = Math.max(0, Math.min(index, rest.length));
+  await db.transaction("rw", db.goals, async () => {
+    for (let i = 0; i < rest.length; i++) {
+      const newOrder = i >= clamped ? i + 1 : i;
+      if (rest[i].order !== newOrder) {
+        await db.goals.update(rest[i].id, { order: newOrder });
+      }
+    }
+    await db.goals.update(id, {
+      status,
+      order: clamped,
+      updatedAt: new Date(),
+      completedAt: status === "done" ? new Date() : null,
+    });
+  });
+}
+
+export async function deleteGoal(id: string): Promise<void> {
+  // Genuine cascade — milestones must die with the goal.
+  await db.milestones.where("goalId").equals(id).delete();
+  await db.goals.delete(id);
+}
+
+export async function getMilestones(goalId: string): Promise<MilestoneRec[]> {
+  return db.milestones.where("goalId").equals(goalId).sortBy("order");
+}
+
+export async function getAllMilestones(): Promise<MilestoneRec[]> {
+  return db.milestones.toArray();
+}
+
+export async function createMilestone(goalId: string, title: string): Promise<MilestoneRec> {
+  const count = await db.milestones.where("goalId").equals(goalId).count();
+  const ms: MilestoneRec = {
+    id: uid(),
+    goalId,
+    title: title.trim(),
+    done: false,
+    order: count,
+    createdAt: new Date(),
+  };
+  await db.milestones.add(ms);
+  await db.goals.update(goalId, { updatedAt: new Date() });
+  return ms;
+}
+
+export async function toggleMilestone(id: string, done: boolean): Promise<void> {
+  await db.milestones.update(id, { done });
+}
+
+export async function deleteMilestone(id: string): Promise<void> {
+  await db.milestones.delete(id);
+}
+
 // ─── Full Data Export / Import ───────────────────────────────
 export type FullExport = {
   version: 1;
@@ -1111,13 +1223,25 @@ export type FullExport = {
     completed: boolean;
     startedAt: string;
   }[];
+  goals?: {
+    title: string;
+    description?: string | null;
+    horizon: GoalHorizon;
+    status: GoalStatus;
+    order: number;
+    dueDate?: string | null;
+    color?: string | null;
+    completedAt?: string | null;
+    milestones: { title: string; done: boolean; order: number }[];
+  }[];
 };
 
 export async function exportAllData(): Promise<string> {
-  const [subjects, bundles, sessions] = await Promise.all([
+  const [subjects, bundles, sessions, goals] = await Promise.all([
     db.subjects.toArray(),
     db.bundles.toArray(),
     db.studySessions.orderBy("startedAt").toArray(),
+    db.goals.toArray(),
   ]);
 
   const exportData: FullExport = {
@@ -1132,6 +1256,7 @@ export async function exportAllData(): Promise<string> {
       completed: s.completed,
       startedAt: new Date(s.startedAt).toISOString(),
     })),
+    goals: [],
   };
 
   for (const s of subjects) {
@@ -1179,6 +1304,21 @@ export async function exportAllData(): Promise<string> {
       description: b.description,
       color: b.color,
       flashcards: cardEntries,
+    });
+  }
+
+  for (const g of goals) {
+    const ms = await db.milestones.where("goalId").equals(g.id).sortBy("order");
+    exportData.goals!.push({
+      title: g.title,
+      description: g.description,
+      horizon: g.horizon,
+      status: g.status,
+      order: g.order,
+      dueDate: g.dueDate ? new Date(g.dueDate).toISOString() : null,
+      color: g.color,
+      completedAt: g.completedAt ? new Date(g.completedAt).toISOString() : null,
+      milestones: ms.map((m) => ({ title: m.title, done: m.done, order: m.order })),
     });
   }
 
@@ -1257,6 +1397,25 @@ export async function importAllData(json: string): Promise<{ imported: string }>
     });
   }
   imported += `${data.sessions.length} sessions`;
+
+  // Import goals → milestones (optional field — old backups still work)
+  if (data.goals) {
+    for (const g of data.goals) {
+      const goal = await createGoal({
+        title: g.title,
+        description: g.description ?? undefined,
+        horizon: g.horizon,
+        dueDate: g.dueDate ? new Date(g.dueDate) : null,
+        color: g.color ?? null,
+      });
+      await moveGoal(goal.id, g.status, g.order);
+      for (const m of g.milestones ?? []) {
+        const ms = await createMilestone(goal.id, m.title);
+        if (m.done) await toggleMilestone(ms.id, true);
+      }
+    }
+    imported += ` ${data.goals.length} goals`;
+  }
 
   return { imported };
 }
