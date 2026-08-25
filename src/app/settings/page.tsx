@@ -142,12 +142,12 @@ export default function SettingsPage() {
                     style={{ background: t.accent, borderColor: t.fg }}
                   />
                   {active && (
-                    <span
-                      className="text-[10px] font-bold uppercase tracking-widest"
+                    <Check
+                      className="h-4 w-4 shrink-0"
+                      strokeWidth={3}
+                      aria-hidden
                       style={{ color: t.fg }}
-                    >
-                      ●
-                    </span>
+                    />
                   )}
                 </div>
                 <span
