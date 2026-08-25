@@ -11,9 +11,10 @@ import { Play, Pause, Square, SkipForward, Coffee, Brain, Music } from "lucide-r
 import { cn } from "@/lib/utils";
 import { createStudySession, getSubjects, getPomoPresets } from "@/app/actions";
 import { usePomodoro, phaseSeconds, BUILTIN_PRESETS } from "@/lib/pomodoro";
+import { soundscape, type SoundscapeName } from "@/lib/soundscape";
 import type { PomoPresetRec } from "@/lib/db";
 
-const SOUNDSCAPES = ["Silence", "Rain", "Café", "Waves"] as const;
+const SOUNDSCAPES: SoundscapeName[] = ["Silence", "Rain", "Café", "Waves"];
 
 const PHASE_META = {
   work: {
@@ -42,7 +43,7 @@ export function FocusZone() {
   const [subjectId, setSubjectId] = useState("");
   const [task, setTask] = useState("");
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
-  const [soundscape, setSoundscape] = useState<(typeof SOUNDSCAPES)[number]>("Silence");
+  const [soundscapeName, setSoundscapeName] = useState<SoundscapeName>("Silence");
 
   const pomo = usePomodoro();
   const { workMin, breakMin, longBreakMin, cyclesBeforeLongBreak } = pomo.config;
@@ -50,7 +51,14 @@ export function FocusZone() {
   useEffect(() => {
     getSubjects().then((s) => setSubjects(s.map((x) => ({ id: x.id, name: x.name }))));
     getPomoPresets().then(setPresets);
+    // Stop ambient audio if this widget unmounts (route change)
+    return () => soundscape.stop();
   }, []);
+
+  const pickSoundscape = (name: SoundscapeName) => {
+    setSoundscapeName(name);
+    soundscape.play(name); // "Silence" stops the engine
+  };
 
   const total = phaseSeconds(pomo.phase, pomo.config);
   const progress = total > 0 ? ((total - pomo.seconds) / total) * 100 : 0;
@@ -110,8 +118,8 @@ export function FocusZone() {
           <Music size={12} aria-hidden />
           <select
             aria-label="Soundscape"
-            value={soundscape}
-            onChange={(e) => setSoundscape(e.target.value as (typeof SOUNDSCAPES)[number])}
+            value={soundscapeName}
+            onChange={(e) => pickSoundscape(e.target.value as SoundscapeName)}
             className="cursor-pointer appearance-none bg-transparent text-[10px] font-bold uppercase tracking-widest outline-none"
           >
             {SOUNDSCAPES.map((s) => (
