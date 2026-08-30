@@ -62,6 +62,11 @@ export function NotebookLabModal({ kind, id, fallbackTitle, onClose }: {
       if (!r.ok) { setErr(r.message); setPhase("error"); return; }
       if (transport === "share-link" && r.record.shareUrl) setShareUrl(r.record.shareUrl);
       setPhase(transport === "share-link" ? "shared" : "downloaded");
+      // Replicate the old "open NotebookLM in a new tab on download" behavior —
+      // users expect one click to do both: get the file AND get the destination.
+      if (transport === "file-download") {
+        window.open("https://notebook.google.com/", "_blank", "noopener,noreferrer");
+      }
     } finally {
       setBusy(null);
     }
@@ -86,10 +91,20 @@ export function NotebookLabModal({ kind, id, fallbackTitle, onClose }: {
         {phase === "preview" && (
           <>
             <p className="mb-2 text-xs text-muted-fg uppercase tracking-widest">{title}</p>
-            <textarea readOnly value={body} className="flex-1 min-h-[240px] bg-bg border border-border p-3 font-mono text-xs text-fg" />
+            <textarea
+              readOnly
+              value={body}
+              className="flex-1 min-h-[340px] bg-bg border border-border p-4 font-mono text-sm text-fg leading-relaxed"
+            />
             <p className="mt-2 text-[11px] text-muted-fg uppercase tracking-widest">
               {body.length.toLocaleString()} CHARS · {new TextEncoder().encode(body).length.toLocaleString()} BYTES
             </p>
+
+            {/0 flashcards|No notes\.|0 notes/.test(body) && (
+              <p className="mt-2 text-xs text-warning">
+                ⚠ THIS SOURCE IS EMPTY — NO CARDS OR NOTES FOUND. DOWNLOAD ANYWAY OR ADD CONTENT TO THIS {kind.toUpperCase()} FIRST.
+              </p>
+            )}
 
             <div className="mt-4 flex flex-wrap gap-2 justify-end">
               <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(body)}>
@@ -100,11 +115,11 @@ export function NotebookLabModal({ kind, id, fallbackTitle, onClose }: {
               </Button>
               {shareEnabled && online && (
                 <Button variant="secondary" size="sm" onClick={() => send("share-link")} disabled={busy !== null}>
-                  <Link2 size={14} /> {busy === "share-link" ? "CREATING…" : "CREATE SHARE LINK"}
+                  <Link2 size={14} /> {busy === "share-link" ? "CREATING..." : "CREATE SHARE LINK"}
                 </Button>
               )}
               <Button size="sm" onClick={() => send("file-download")} disabled={busy !== null}>
-                <Download size={14} /> {busy === "file-download" ? "DOWNLOADING…" : "DOWNLOAD .MD"}
+                <Download size={14} /> {busy === "file-download" ? "DOWNLOADING..." : "DOWNLOAD .MD"}
               </Button>
             </div>
 
