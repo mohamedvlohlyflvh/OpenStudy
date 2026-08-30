@@ -46,6 +46,10 @@ interface AppState {
   reducedMotion: boolean;
   setReducedMotion: (v: boolean) => void;
 
+  // NotebookLM
+  notebookShareLinkEnabled: boolean;
+  setNotebookShareLinkEnabled: (v: boolean) => void;
+
   // Hydrate persisted prefs from localStorage AFTER mount (post-hydration) so
   // the first client render always matches the server render. Reading
   // localStorage at module scope made sidebarOpen/theme differ between server
@@ -65,7 +69,7 @@ interface AppState {
 
 const STORAGE_KEY = "study-prefs";
 
-function loadPrefs(): Partial<Pick<AppState, "theme" | "reducedMotion" | "sidebarOpen">> {
+function loadPrefs(): Partial<Pick<AppState, "theme" | "reducedMotion" | "sidebarOpen" | "notebookShareLinkEnabled">> {
   if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -107,11 +111,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ reducedMotion: v });
   },
 
+  notebookShareLinkEnabled: false,
+  setNotebookShareLinkEnabled: (v) => {
+    const prev = get();
+    persist({ theme: prev.theme, reducedMotion: prev.reducedMotion, sidebarOpen: prev.sidebarOpen, notebookShareLinkEnabled: v });
+    set({ notebookShareLinkEnabled: v });
+  },
+
   hydrateFromStorage: () => {
     const prefs = loadPrefs();
     const patch: Partial<AppState> = {};
     if (typeof prefs.sidebarOpen === "boolean") patch.sidebarOpen = prefs.sidebarOpen;
     if (typeof prefs.reducedMotion === "boolean") patch.reducedMotion = prefs.reducedMotion;
+    if (typeof prefs.notebookShareLinkEnabled === "boolean") patch.notebookShareLinkEnabled = prefs.notebookShareLinkEnabled;
     if (prefs.theme) {
       patch.theme = normalizeTheme(prefs.theme);
       if (typeof document !== "undefined") {
