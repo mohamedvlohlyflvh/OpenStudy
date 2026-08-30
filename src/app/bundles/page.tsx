@@ -164,13 +164,13 @@ export default function BundlesPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
           {bundles.map((bundle) => (
             <Link
               key={bundle.id}
               href={`/flashcards?bundle=${bundle.id}`}
               {...spotlightProps()}
-              className="spotlight-card group relative flex h-52 w-full max-w-xs flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all duration-200 hover:-translate-y-1 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_18px_45px_-15px_rgba(250,204,21,0.25)]"
+              className="spotlight-card group relative flex h-72 w-full max-w-xs flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 text-left transition-all duration-200 hover:-translate-y-1 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_18px_45px_-15px_rgba(250,204,21,0.25)]"
             >
               {/* top accent strip in the bundle's color */}
               <span
@@ -237,11 +237,11 @@ export default function BundlesPage() {
 
               {/* Content */}
               <div className="mt-3 min-w-0">
-                <h3 className="truncate text-lg font-bold text-white transition-colors group-hover:text-yellow-400">
+                <h3 className="truncate text-xl font-bold text-white transition-colors group-hover:text-yellow-400">
                   {bundle.name}
                 </h3>
                 {bundle.description && (
-                  <p className="mt-1 line-clamp-2 text-xs text-zinc-400">
+                  <p className="mt-1.5 line-clamp-2 text-sm text-zinc-400">
                     {bundle.description}
                   </p>
                 )}
