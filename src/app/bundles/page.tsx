@@ -8,8 +8,9 @@ import { Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { showUndo } from "@/components/undo-toast";
-import { getBundles, createBundle, updateBundle, deleteBundle, exportBundleMarkdown } from "@/app/actions";
+import { getBundles, createBundle, updateBundle, deleteBundle } from "@/app/actions";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
+import { NotebookLabButton } from "@/components/notebook-lab-button";
 import { spotlightProps } from "@/lib/interactions";
 
 type Bundle = Awaited<ReturnType<typeof getBundles>>[number];
@@ -203,27 +204,9 @@ export default function BundlesPage() {
                     <Layers size={13} />
                     Manage
                   </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      (async () => {
-                        const md = await exportBundleMarkdown(bundle.id);
-                        try {
-                          await navigator.clipboard.writeText(md);
-                        } catch {
-                          /* clipboard may be blocked; still open NotebookLM */
-                        }
-                        window.open("https://notebook.google.com/", "_blank", "noopener");
-                        alert("BUNDLE EXPORTED AS MARKDOWN & COPIED.\nPASTE IT INTO NOTEBOOKLM AS A SOURCE.");
-                      })();
-                    }}
-                    aria-label="Send to NotebookLM"
-                    title="Send to NotebookLM"
-                    className="p-2.5 text-[13px] leading-none text-zinc-400 hover:text-yellow-400"
-                  >
-                    📒
-                  </button>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <NotebookLabButton kind="bundle" id={bundle.id} title={bundle.name} />
+                  </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
