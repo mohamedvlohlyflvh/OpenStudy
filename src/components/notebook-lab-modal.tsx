@@ -82,7 +82,7 @@ export function NotebookLabModal({ kind, id, fallbackTitle, onClose }: {
     <div role="dialog" aria-modal="true" aria-label="Send to NotebookLM"
          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="glass max-w-2xl w-full max-h-[85vh] flex flex-col p-6">
+      <div className="glass max-w-4xl w-full max-h-[90vh] flex flex-col p-6">
         <header className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold uppercase tracking-tighter text-fg">SEND TO NOTEBOOKLM</h2>
           <button onClick={onClose} aria-label="Close" className="text-muted-fg hover:text-fg"><X size={18} /></button>
