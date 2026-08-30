@@ -851,7 +851,7 @@ function FlashcardsContent() {
                 role="button"
                 aria-label={isFlipped ? "Show question" : "Reveal answer"}
               >
-                <div className="flip-card relative min-h-[320px] sm:min-h-[360px]" data-flipped={isFlipped}>
+                <div className="flip-card relative min-h-[440px] sm:min-h-[500px]" data-flipped={isFlipped}>
                   {/* ── FRONT — QUESTION ── */}
                   <div className="flip-face absolute inset-0 flex flex-col overflow-hidden rounded-2xl border-2 border-border bg-zinc-900/60 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.8)]">
                     <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent to-transparent" />
@@ -873,7 +873,7 @@ function FlashcardsContent() {
                           {activeCard.topic.subject?.name ?? "GENERAL"} › {activeCard.topic.name}
                         </p>
                       )}
-                      <div className="text-2xl font-bold uppercase leading-relaxed tracking-tight sm:text-[1.7rem]">
+                      <div className="text-3xl font-bold uppercase leading-relaxed tracking-tight sm:text-4xl">
                         {activeCard.front}
                       </div>
                     </div>
@@ -893,7 +893,7 @@ function FlashcardsContent() {
                       <Badge className="bg-accent-fg/15 text-accent-fg">ANSWER</Badge>
                     </div>
                     <div className="flex flex-1 flex-col items-center justify-center px-10 pb-4 text-center">
-                      <div className="[&_p]:text-accent-fg [&_li]:text-accent-fg text-2xl font-bold uppercase leading-relaxed tracking-tight text-accent-fg sm:text-[1.7rem] [&_.md-p]:text-accent-fg">
+                      <div className="[&_p]:text-accent-fg [&_li]:text-accent-fg text-3xl font-bold uppercase leading-relaxed tracking-tight text-accent-fg sm:text-4xl [&_.md-p]:text-accent-fg">
                         <Markdown content={activeCard.back} />
                       </div>
                     </div>
