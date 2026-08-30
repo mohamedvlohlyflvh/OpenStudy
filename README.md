@@ -14,9 +14,10 @@
 | **Notes** | Markdown notes linked to subjects |
 | **Sessions** | Timed study sessions with history |
 | **Bundles** | Group cards into study bundles |
+| **Theming** | "Aurora Glass" design system — see [`DESIGN.md`](DESIGN.md) |
+| **NotebookLM** | One-click export of any bundle, subject, or note set as a NotebookLM source. Offline-first by default (downloads a `.md` file); opt-in share-link upload in Settings. |
 | **Offline-first** | Dexie/IndexedDB — everything lives in the browser, works without internet |
 | **PWA** | Installable app with manifest + offline fallback route |
-| **Theming** | "Aurora Glass" design system — see [`DESIGN.md`](DESIGN.md) |
 
 ## 🎨 Design System
 
