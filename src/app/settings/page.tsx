@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { ExternalLink } from "lucide-react";
 import { useAppStore, type ThemeName } from "@/lib/store";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { exportAllData, importAllData } from "@/app/actions";
+import { RecentExportsList } from "@/components/recent-exports-list";
 import { Download, Upload, Check, AlertTriangle } from "lucide-react";
 
 const THEMES: { id: ThemeName; name: string; bg: string; accent: string; fg: string }[] = [
@@ -68,6 +70,8 @@ export default function SettingsPage() {
   const setTheme = useAppStore((s) => s.setTheme);
   const reducedMotion = useAppStore((s) => s.reducedMotion);
   const setReducedMotion = useAppStore((s) => s.setReducedMotion);
+  const notebookShareLinkEnabled = useAppStore((s) => s.notebookShareLinkEnabled);
+  const setNotebookShareLinkEnabled = useAppStore((s) => s.setNotebookShareLinkEnabled);
   const [exportStatus, setExportStatus] = useState<"idle" | "exporting">("idle");
   const [importStatus, setImportStatus] = useState<"idle" | "importing" | "success" | "error">("idle");
   const [importMessage, setImportMessage] = useState("");
@@ -171,6 +175,35 @@ export default function SettingsPage() {
           checked={reducedMotion}
           onChange={setReducedMotion}
         />
+      </section>
+
+      {/* Notebook Lab */}
+      <section className="mt-12 max-w-2xl space-y-4">
+        <h2 className="mb-4 text-lg font-bold uppercase tracking-tighter text-fg">NOTEBOOK LAB</h2>
+
+        <Toggle
+          label="ALLOW SHARE-LINK UPLOADS"
+          description="OFF = STUDYMAX NEVER MAKES A NETWORK CALL FOR THIS FEATURE. ON = THE APP CAN POST SOURCES TO A PUBLIC PASTE SERVICE SO NOTEBOOKLM CAN FETCH THEM AS A WEBSITE."
+          checked={notebookShareLinkEnabled}
+          onChange={setNotebookShareLinkEnabled}
+        />
+
+        <div className="border-2 border-border bg-bg p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-tight text-fg">NOTEBOOKLM</p>
+              <p className="mt-1 text-xs text-muted-fg uppercase tracking-widest">
+                EXPORT BUNDLES, SUBJECTS, OR NOTE SETS AS NOTEBOOKLM SOURCES.
+              </p>
+            </div>
+            <a href="https://notebook.google.com/" target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-accent hover:underline">
+              <ExternalLink size={12} /> OPEN NOTEBOOKLM
+            </a>
+          </div>
+        </div>
+
+        <RecentExportsList />
       </section>
 
       {/* Data Management */}
