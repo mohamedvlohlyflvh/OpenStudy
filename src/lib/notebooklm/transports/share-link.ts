@@ -1,6 +1,7 @@
 "use client";
 import type { NotebookTransport, NotebookTransportResult } from "./types";
 import type { NotebookSourceInput } from "../schema";
+import { useAppStore } from "@/lib/store";
 
 const ENDPOINT = "https://dpaste.com/api/v2/";
 
@@ -8,10 +9,15 @@ export const shareLinkTransport: NotebookTransport = {
   id: "share-link",
   label: "Create share link",
   requiresNetwork: true,
-  // TODO(notebooklm): wire to useAppStore.getState().notebookShareLinkEnabled in Task 6.5
   isAvailable: () => {
     if (typeof navigator !== "undefined" && !navigator.onLine) return false;
-    return false; // hard-off until Task 6.5 lands; see ledger ruling #3
+    // Read the Settings toggle. The store is hydrated post-mount; before
+    // hydration the default (false) is the safe answer.
+    try {
+      return useAppStore.getState().notebookShareLinkEnabled === true;
+    } catch {
+      return false;
+    }
   },
   async send(input: NotebookSourceInput, body: string): Promise<NotebookTransportResult> {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
