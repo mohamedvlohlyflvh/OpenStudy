@@ -10,7 +10,6 @@ import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { showUndo } from "@/components/undo-toast";
 import { getBundles, createBundle, updateBundle, deleteBundle } from "@/app/actions";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
-import { NotebookLabButton } from "@/components/notebook-lab-button";
 import { spotlightProps } from "@/lib/interactions";
 
 type Bundle = Awaited<ReturnType<typeof getBundles>>[number];
@@ -204,9 +203,6 @@ export default function BundlesPage() {
                     <Layers size={13} />
                     Manage
                   </button>
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <NotebookLabButton kind="bundle" id={bundle.id} title={bundle.name} />
-                  </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

@@ -7,7 +7,6 @@ import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { getSubjects, createSubject, deleteSubject, createTopic, getTopics, updateTopic, deleteTopic, updateSubject } from "@/app/actions";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
-import { NotebookLabButton } from "@/components/notebook-lab-button";
 import { readableOn } from "@/lib/utils";
 import { tiltHandlers } from "@/lib/interactions";
 
@@ -252,9 +251,6 @@ export default function SubjectsPage() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <span onClick={(e) => e.stopPropagation()}>
-                      <NotebookLabButton kind="subject" id={subject.id} title={subject.name} />
-                    </span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

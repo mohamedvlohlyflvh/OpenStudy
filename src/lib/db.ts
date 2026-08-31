@@ -1,5 +1,4 @@
 import Dexie, { type Table } from "dexie";
-import type { NotebookExportRec, NotebookSettings } from "@/lib/notebooklm/schema";
 
 // ─── Record types (mirror the previous Prisma models 1:1) ───────
 export interface SubjectRec {
@@ -165,8 +164,6 @@ class StudyMaxDB extends Dexie {
   pomoPresets!: Table<PomoPresetRec, string>;
   goals!: Table<GoalRec, string>;
   milestones!: Table<MilestoneRec, string>;
-  notebookExports!: Table<NotebookExportRec, string>;
-  notebookSettings!: Table<NotebookSettings, string>;
 
   constructor() {
     super("studymax");
@@ -191,11 +188,6 @@ class StudyMaxDB extends Dexie {
     this.version(3).stores({
       goals: "id, status, horizon, subjectId, dueDate, createdAt, order",
       milestones: "id, goalId, order",
-    });
-    // v4: NotebookLM integration — export history + settings (additive)
-    this.version(4).stores({
-      notebookExports: "id, kind, sourceId, createdAt",
-      notebookSettings: "id",
     });
   }
 }
