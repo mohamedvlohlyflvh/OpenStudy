@@ -1453,3 +1453,50 @@ export async function importAllData(json: string): Promise<{ imported: string }>
 
   return { imported };
 }
+
+// ─── Bulk import (NotebookLM / any LLM → flashcards) ─────────────
+import { parseAiCardsInput, AiCardInput } from "@/lib/ai-import";
+
+export async function bulkCreateFlashcards(
+  bundleId: string,
+  cardsJson: string
+): Promise<{ ok: boolean; created: number; error?: string }> {
+  let parsed: AiCardInput[];
+  try {
+    parsed = parseAiCardsInput(cardsJson);
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "UNKNOWN";
+    return {
+      ok: false,
+      created: 0,
+      error:
+        code === "EMPTY_INPUT" ? "Paste some JSON first." :
+        code === "INVALID_JSON" ? "That isn't valid JSON. Strip any markdown fences and try again." :
+        code === "SHAPE_MISMATCH" ? "JSON shape is wrong — expected an array of {front, back} objects, or { cards: [...] }." :
+        "Failed to parse input.",
+    };
+  }
+  const bundle = await db.bundles.get(bundleId);
+  if (!bundle) return { ok: false, created: 0, error: "Bundle not found." };
+
+  const now = new Date();
+  const rows = parsed.map((c) => ({
+    id: uid(),
+    topicId: null,
+    subjectId: null,
+    bundleId,
+    front: c.front,
+    back: c.back,
+    difficulty: c.difficulty ?? 1,
+    easeFactor: 2.5,
+    intervalDays: 1,
+    nextReview: now,
+    reviewCount: 0,
+    consecutiveAgain: 0,
+    isLeech: false,
+    createdAt: now,
+    updatedAt: now,
+  }));
+  await db.flashcards.bulkAdd(rows);
+  return { ok: true, created: rows.length };
+}
