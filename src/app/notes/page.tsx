@@ -5,12 +5,14 @@ import { Plus, Trash2, Pin, StickyNote, Pencil } from "lucide-react";
 import { Card, Button, Modal, Input, EmptyState, Skeleton, Textarea } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
-import { getAllNotes, getSubjects, createNote, deleteNote, updateNote, exportNotesMarkdown } from "@/app/actions";
+import { getAllNotes, getSubjects, createNote, deleteNote, updateNote, exportNotesMarkdown, getBundles } from "@/app/actions";
 import { SubjectTopicSelect } from "@/components/subject-topic-select";
 import { TagInput } from "@/components/tag-input";
 import { Markdown } from "@/components/markdown";
+import { NoteAiImportButton } from "@/components/note-ai-import-button";
 import { showUndo } from "@/components/undo-toast";
 import { readableOn } from "@/lib/utils";
+import type { BundleRec } from "@/lib/db";
 
 type Note = Omit<Awaited<ReturnType<typeof getAllNotes>>[number], "topic"> & {
   topic: Awaited<ReturnType<typeof getAllNotes>>[number]["topic"] | null;
@@ -19,6 +21,7 @@ type Note = Omit<Awaited<ReturnType<typeof getAllNotes>>[number], "topic"> & {
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [subjects, setSubjects] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [bundles, setBundles] = useState<BundleRec[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState("");
@@ -34,9 +37,10 @@ export default function NotesPage() {
   const [editTags, setEditTags] = useState<string[]>([]);
 
   useEffect(() => {
-    Promise.all([getAllNotes(), getSubjects()]).then(([n, s]) => {
+    Promise.all([getAllNotes(), getSubjects(), getBundles()]).then(([n, s, b]) => {
       setNotes(n);
       setSubjects(s);
+      setBundles(b);
       setLoaded(true);
     });
   }, []);
@@ -201,6 +205,11 @@ export default function NotesPage() {
                   )}
                 </div>
                 <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                  <NoteAiImportButton
+                    noteId={note.id}
+                    noteTitle={note.title}
+                    availableBundles={bundles}
+                  />
                   <button
                     onClick={() => openEdit(note)}
                     className="p-2.5 text-muted hover:text-accent transition-colors"
