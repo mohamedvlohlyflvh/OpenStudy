@@ -7,6 +7,7 @@ import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { getSubjects, createSubject, deleteSubject, createTopic, getTopics, updateTopic, deleteTopic, updateSubject } from "@/app/actions";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
+import { SubjectIconPicker, SUBJECT_ICONS } from "@/components/subject-icon-picker";
 import { readableOn } from "@/lib/utils";
 import { tiltHandlers } from "@/lib/interactions";
 
@@ -19,6 +20,7 @@ export default function SubjectsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#DFE104");
+  const [icon, setIcon] = useState("book-open");
   const [isPending, startTransition] = useTransition();
 
   // Subject edit state
@@ -26,6 +28,7 @@ export default function SubjectsPage() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editColor, setEditColor] = useState("#FACC15");
+  const [editIcon, setEditIcon] = useState("book-open");
 
   // Topic management modal state
   const [manageTopicsFor, setManageTopicsFor] = useState<string | null>(null);
@@ -128,12 +131,13 @@ export default function SubjectsPage() {
         name: name.trim(),
         description: description.trim() || undefined,
         color,
-        icon: "book-open",
+        icon,
       });
       setSubjects((prev) => [{ ...subject, _count: { topics: 0, flashcards: 0, studySessions: 0 } }, ...prev]);
       setModalOpen(false);
       setName("");
       setDescription("");
+      setIcon("book-open");
     });
   };
 
@@ -150,17 +154,18 @@ export default function SubjectsPage() {
     setEditName(subject.name);
     setEditDescription(subject.description ?? "");
     setEditColor(subject.color || "#FACC15");
+    setEditIcon(subject.icon || "book-open");
   };
 
   const handleEditSave = () => {
     if (!editSubject || !editName.trim()) return;
     startTransition(async () => {
       const desc = editDescription.trim();
-      await updateSubject(editSubject.id, { name: editName.trim(), description: desc, color: editColor });
+      await updateSubject(editSubject.id, { name: editName.trim(), description: desc, color: editColor, icon: editIcon });
       setSubjects((prev) =>
         prev.map((s) =>
           s.id === editSubject.id
-            ? { ...s, name: editName.trim(), description: desc || null, color: editColor }
+            ? { ...s, name: editName.trim(), description: desc || null, color: editColor, icon: editIcon }
             : s
         )
       );
@@ -237,7 +242,10 @@ export default function SubjectsPage() {
                         ["--chip-text" as string]: readableOn(subject.color || "#DFE104"),
                       }}
                     >
-                      {subject.name.charAt(0)}
+                      {(() => {
+                        const Icon = SUBJECT_ICONS[subject.icon || "book-open"];
+                        return Icon ? <Icon size={28} /> : subject.name.charAt(0);
+                      })()}
                     </div>
                     <div className="min-w-0">
                       <h3 className="truncate text-xl font-bold uppercase tracking-tight">
@@ -427,6 +435,7 @@ export default function SubjectsPage() {
             onChange={(e) => setDescription(e.target.value)}
           />
           <BundleColorPicker value={color} onChange={setColor} />
+          <SubjectIconPicker value={icon} onChange={setIcon} />
           <div className="flex justify-end gap-4 pt-4">
             <Button variant="ghost" onClick={() => setModalOpen(false)}>
               CANCEL
@@ -455,6 +464,7 @@ export default function SubjectsPage() {
               onChange={(e) => setEditDescription(e.target.value)}
             />
             <BundleColorPicker value={editColor} onChange={setEditColor} />
+            <SubjectIconPicker value={editIcon} onChange={setEditIcon} />
             <div className="flex justify-end gap-4 pt-4">
               <Button variant="ghost" onClick={() => setEditSubject(null)}>
                 CANCEL
