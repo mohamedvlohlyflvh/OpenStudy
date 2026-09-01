@@ -10,7 +10,6 @@ import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { showUndo } from "@/components/undo-toast";
 import { getBundles, createBundle, updateBundle, deleteBundle } from "@/app/actions";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
-import { AiImportButton } from "@/components/ai-import-button";
 import { spotlightProps } from "@/lib/interactions";
 
 type Bundle = Awaited<ReturnType<typeof getBundles>>[number];
@@ -191,9 +190,6 @@ export default function BundlesPage() {
                   {bundle.name.charAt(0)}
                 </div>
                 <div className="flex -mr-2 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.preventDefault()}>
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <AiImportButton bundleId={bundle.id} bundleName={bundle.name} />
-                  </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

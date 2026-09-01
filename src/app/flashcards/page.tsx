@@ -45,6 +45,7 @@ import { db as offlineDb, cacheBundles, cacheFlashcards, getCachedBundleCards, g
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { ImageUploadButton } from "@/components/image-upload-button";
+import { AiImportButton } from "@/components/ai-import-button";
 
 type Flashcard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
 type ManagedFlashcard = Awaited<ReturnType<typeof getAllFlashcards>>[number];
@@ -569,6 +570,10 @@ function FlashcardsContent() {
               ADD CARD
             </Button>
           )}
+          {selectedBundle && (() => {
+            const b = bundles.find((x) => x.id === selectedBundle);
+            return b ? <AiImportButton bundleId={b.id} bundleName={b.name} /> : null;
+          })()}
           <button
             onClick={() => router.push("/bundles")}
             className="ml-auto py-2 text-xs font-bold uppercase tracking-widest text-muted-fg hover:text-accent"
