@@ -7,6 +7,7 @@ import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { PageLoader } from "@/components/page-loader";
 import { StatsStreakBadge } from "@/components/stats-streak-badge";
 import { StatsHeatmap } from "@/components/stats-heatmap";
+import { RetentionCurve } from "@/components/retention-curve";
 import { getAllReviewLogs, getBundles, getFlashcards } from "@/app/actions";
 import type { BundleRec, FlashcardRec, ReviewLogRec } from "@/lib/db";
 
@@ -55,7 +56,10 @@ export default function StatsPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="!p-5">
           <p className="mb-1 font-semibold tracking-tight">Retention curve</p>
-          <p className="text-[11px] uppercase tracking-widest text-muted-fg">Coming next</p>
+          <p className="mb-3 text-[11px] uppercase tracking-widest text-muted-fg">
+            Accuracy vs. days since first review
+          </p>
+          <RetentionCurve reviews={reviews} />
         </Card>
         <Card className="!p-5">
           <p className="mb-1 font-semibold tracking-tight">Forecast</p>
