@@ -9,9 +9,10 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Play, Pause, Square, SkipForward, Coffee, Brain, Music } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createStudySession, getSubjects, getPomoPresets } from "@/app/actions";
+import { createStudySession, getSubjects, getPomoPresets, getDueCount } from "@/app/actions";
 import { usePomodoro, phaseSeconds, BUILTIN_PRESETS } from "@/lib/pomodoro";
 import { soundscape, type SoundscapeName } from "@/lib/soundscape";
+import { RemindMeControl } from "./remind-me-control";
 import type { PomoPresetRec } from "@/lib/db";
 
 const SOUNDSCAPES: SoundscapeName[] = ["Silence", "Rain", "Café", "Waves"];
@@ -40,6 +41,7 @@ const PHASE_META = {
 export function FocusZone() {
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [presets, setPresets] = useState<PomoPresetRec[]>([]);
+  const [dueCount, setDueCount] = useState(0);
   const [subjectId, setSubjectId] = useState("");
   const [task, setTask] = useState("");
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
@@ -51,6 +53,7 @@ export function FocusZone() {
   useEffect(() => {
     getSubjects().then((s) => setSubjects(s.map((x) => ({ id: x.id, name: x.name }))));
     getPomoPresets().then(setPresets);
+    getDueCount().then(setDueCount);
     // Stop ambient audio if this widget unmounts (route change)
     return () => soundscape.stop();
   }, []);
@@ -212,6 +215,8 @@ export function FocusZone() {
           </>
         )}
       </div>
+
+      <RemindMeControl dueCount={dueCount} />
 
       {/* Presets — built-in + saved custom techniques */}
       <div className="mb-6 flex flex-wrap justify-center gap-2">
