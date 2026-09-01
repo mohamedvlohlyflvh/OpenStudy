@@ -1508,6 +1508,17 @@ export async function bulkCreateFlashcards(
   return { ok: true, created: rows.length };
 }
 
+/** Bulk import cards into a bundle, from a note's text. Verifies note + bundle exist. */
+export async function bulkCreateFlashcardsFromNote(
+  noteId: string,
+  bundleId: string,
+  cardsJson: string
+): Promise<{ ok: boolean; created: number; error?: string }> {
+  const note = await db.notes.get(noteId);
+  if (!note) return { ok: false, created: 0, error: "Note not found." };
+  return bulkCreateFlashcards(bundleId, cardsJson);
+}
+
 // ─── Reset card progress (used by bulk reset + hardest-cards table) ──
 export async function batchResetCardProgress(ids: string[]): Promise<number> {
   if (ids.length === 0) return 0;
