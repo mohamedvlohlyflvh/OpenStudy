@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Clipboard, Sparkles, Check, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
-import { Button } from "./ui";
+import { Button, Modal } from "./ui";
 import { bulkCreateFlashcards } from "@/app/actions";
 import { NOTEBOOKLM_IMPORT_PROMPT } from "@/lib/ai-import";
 import { useRouter } from "next/navigation";
@@ -20,20 +20,15 @@ export function AiImportModal({
   onImported?: () => void | Promise<void>;
 }) {
   const router = useRouter();
+  const [open, setOpen] = useState(true);
   const [phase, setPhase] = useState<Phase>("idle");
   const [pasted, setPasted] = useState("");
   const [created, setCreated] = useState(0);
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(false);
 
-  // ESC to close
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // Try to count cards in pasted text for a live preview of "IMPORT N CARDS"
+  // Live detection of how many cards are in the pasted JSON, for the
+  // "IMPORT N CARDS" label.
   const detectedCount = (() => {
     if (!pasted.trim()) return 0;
     try {
@@ -49,13 +44,18 @@ export function AiImportModal({
     }
   })();
 
+  const close = () => {
+    setOpen(false);
+    // Allow the close animation to play before unmounting
+    setTimeout(onClose, 150);
+  };
+
   const copyPrompt = async () => {
     try {
       await navigator.clipboard.writeText(NOTEBOOKLM_IMPORT_PROMPT);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1800);
     } catch {
-      // Fallback: select the text in a hidden textarea
       const ta = document.createElement("textarea");
       ta.value = NOTEBOOKLM_IMPORT_PROMPT;
       document.body.appendChild(ta);
@@ -63,7 +63,7 @@ export function AiImportModal({
       try { document.execCommand("copy"); } catch {}
       ta.remove();
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1800);
     }
   };
 
@@ -80,15 +80,15 @@ export function AiImportModal({
       if (!r.ok) { setErr(r.error || "Import failed."); setPhase("error"); return; }
       setCreated(r.created);
       setPhase("done");
-      // Tell the parent to re-fetch the cards (so the new ones show up
-      // without a manual page refresh). Fall back to router.refresh if
-      // the caller didn't provide a callback.
+      // Re-fetch the parent list so the new cards show up without a
+      // manual page refresh. Fallback to router.refresh if the caller
+      // didn't provide a callback.
       try {
         if (onImported) await onImported();
         else router.refresh();
       } catch {
-        /* parent re-fetch failed — the cards are still saved, the user
-           just won't see them until they refresh manually */
+        /* parent re-fetch failed — cards are saved, user just won't
+           see them until they refresh manually */
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -96,130 +96,131 @@ export function AiImportModal({
     }
   };
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Import from NotebookLM"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="glass max-w-3xl w-full max-h-[90vh] flex flex-col p-6">
-        <header className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold uppercase tracking-tighter text-fg">
-            IMPORT INTO <span className="text-accent">{bundleName}</span>
-          </h2>
+  // ────────────────────────────────────────────────────────────────
+  // Body variants — each phase gets its own layout
+  // ────────────────────────────────────────────────────────────────
+
+  const promptStep = (
+    <div className="space-y-2">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+        STEP 01 — COPY THE PROMPT BELOW
+      </p>
+      <p className="text-sm text-muted-fg leading-relaxed">
+        Paste this prompt into NotebookLM (or any chat LLM) along with your lesson.
+        It returns a JSON array of <code className="font-mono text-accent">{"{front, back}"}</code> cards.
+      </p>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button size="sm" variant="secondary" onClick={copyPrompt}>
+          {copied ? <Check size={14} /> : <Clipboard size={14} />}
+          {copied ? "COPIED" : "COPY PROMPT"}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={openNotebookLM}>
+          <ExternalLink size={14} /> OPEN NOTEBOOKLM
+        </Button>
+      </div>
+    </div>
+  );
+
+  const pasteStep = (
+    <div className="space-y-2">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+        STEP 02 — PASTE THE JSON BELOW
+      </p>
+      <textarea
+        value={pasted}
+        onChange={(e) => { setPasted(e.target.value); if (phase === "error") setPhase("idle"); }}
+        placeholder={`[\n  { "front": "What is 2+2?", "back": "4" },\n  { "front": "...", "back": "..." }\n]`}
+        className="w-full min-h-[200px] resize-y rounded-xl border-2 border-border bg-bg p-3 font-mono text-sm text-fg leading-relaxed placeholder:text-muted-fg/50 focus:border-accent focus:outline-none"
+        spellCheck={false}
+        autoComplete="off"
+        aria-label="Paste NotebookLM JSON output"
+      />
+      <div className="flex items-center justify-between text-[11px] uppercase tracking-widest">
+        <span className="text-muted-fg">
+          {pasted.trim() ? (
+            detectedCount > 0 ? (
+              <>DETECTED · <span className="font-bold text-fg">{detectedCount}</span> CARD{detectedCount !== 1 ? "S" : ""}</>
+            ) : (
+              <span className="text-warning">UNREADABLE JSON — CHECK FORMAT</span>
+            )
+          ) : (
+            "PASTE THE JSON HERE"
+          )}
+        </span>
+        {pasted && (
           <button
-            onClick={onClose}
-            aria-label="Close"
-            className="text-muted-fg hover:text-fg text-2xl leading-none"
+            type="button"
+            onClick={() => setPasted("")}
+            className="text-muted-fg hover:text-fg"
           >
-            ×
+            CLEAR
           </button>
-        </header>
-
-        {phase === "done" ? (
-          <div className="space-y-4 text-fg">
-            <div className="flex items-center gap-2 border border-success/40 bg-success/10 p-3">
-              <Check size={16} className="text-success" />
-              <p className="text-sm font-bold uppercase tracking-widest">
-                IMPORTED {created} CARD{created !== 1 ? "S" : ""} INTO {bundleName}
-              </p>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => router.push(`/bundles/${bundleId}/cards`)}>
-                REVIEW CARDS
-              </Button>
-              <Button size="sm" onClick={onClose}>DONE</Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Step 1 — copy the prompt */}
-            <div className="mb-4">
-              <p className="mb-2 text-xs text-muted-fg uppercase tracking-widest">
-                STEP 1 — COPY THE PROMPT BELOW
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={copyPrompt}
-                  aria-label="Copy NotebookLM import prompt"
-                >
-                  {copied ? <Check size={14} /> : <Clipboard size={14} />}
-                  {copied ? "COPIED" : "COPY PROMPT"}
-                </Button>
-                <Button variant="secondary" size="sm" onClick={openNotebookLM}>
-                  <ExternalLink size={14} /> OPEN NOTEBOOKLM
-                </Button>
-              </div>
-              <p className="mt-2 text-[11px] text-muted-fg">
-                Paste the prompt into NotebookLM (or any LLM) along with your lesson. It will return a JSON array of <code className="font-mono text-accent">{"{ front, back }"}</code> cards.
-              </p>
-            </div>
-
-            {/* Step 2 — paste the JSON */}
-            <div className="flex-1 min-h-0 flex flex-col">
-              <p className="mb-2 text-xs text-muted-fg uppercase tracking-widest">
-                STEP 2 — PASTE THE JSON BELOW
-              </p>
-              <textarea
-                value={pasted}
-                onChange={(e) => setPasted(e.target.value)}
-                placeholder={`[\n  { "front": "What is 2+2?", "back": "4" },\n  { "front": "...", "back": "..." }\n]`}
-                className="flex-1 min-h-[220px] bg-bg border border-border p-3 font-mono text-sm text-fg leading-relaxed resize-y"
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <div className="mt-2 flex items-center justify-between">
-                <p className="text-[11px] text-muted-fg uppercase tracking-widest">
-                  {pasted.trim() ? (
-                    detectedCount > 0
-                      ? <>DETECTED: <span className="text-fg font-bold">{detectedCount}</span> CARD{detectedCount !== 1 ? "S" : ""}</>
-                      : <>UNREADABLE JSON — CHECK FORMAT</>
-                  ) : (
-                    "PASTE THE JSON HERE"
-                  )}
-                </p>
-                {pasted && (
-                  <button
-                    onClick={() => setPasted("")}
-                    className="text-[11px] text-muted-fg hover:text-fg uppercase tracking-widest"
-                  >
-                    CLEAR
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {phase === "error" && err && (
-              <div className="mt-3 flex items-start gap-2 border border-danger/40 bg-danger/10 p-3 text-xs text-danger">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                <p>{err}</p>
-              </div>
-            )}
-
-            {/* Action bar */}
-            <div className="mt-4 flex flex-wrap gap-2 justify-end">
-              <Button variant="secondary" size="sm" onClick={onClose}>
-                CANCEL
-              </Button>
-              <Button
-                size="sm"
-                onClick={importNow}
-                disabled={phase === "importing" || !pasted.trim() || detectedCount === 0}
-              >
-                {phase === "importing" ? (
-                  <><Loader2 size={14} className="animate-spin" /> IMPORTING…</>
-                ) : (
-                  <><Sparkles size={14} /> IMPORT {detectedCount > 0 ? `${detectedCount} ` : ""}CARD{detectedCount !== 1 ? "S" : ""}</>
-                )}
-              </Button>
-            </div>
-          </>
         )}
       </div>
     </div>
+  );
+
+  const errorBox = err ? (
+    <div className="flex items-start gap-2 rounded-xl border border-danger/40 bg-danger/10 p-3 text-xs text-danger">
+      <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+      <p>{err}</p>
+    </div>
+  ) : null;
+
+  const actionBar = (
+    <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+      <Button variant="secondary" size="sm" onClick={close}>
+        CANCEL
+      </Button>
+      <Button
+        size="sm"
+        onClick={importNow}
+        disabled={phase === "importing" || !pasted.trim() || detectedCount === 0}
+      >
+        {phase === "importing" ? (
+          <><Loader2 size={14} className="animate-spin" /> IMPORTING…</>
+        ) : (
+          <><Sparkles size={14} /> IMPORT {detectedCount > 0 ? `${detectedCount} ` : ""}CARD{detectedCount !== 1 ? "S" : ""}</>
+        )}
+      </Button>
+    </div>
+  );
+
+  const doneScreen = (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 rounded-xl border border-success/40 bg-success/10 p-4">
+        <Check size={18} className="shrink-0 mt-0.5 text-success" />
+        <div>
+          <p className="font-bold uppercase tracking-tight text-fg">
+            IMPORTED {created} CARD{created !== 1 ? "S" : ""}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-fg uppercase tracking-widest">
+            ADDED TO {bundleName}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" size="sm" onClick={() => router.push(`/bundles/${bundleId}/cards`)}>
+          REVIEW CARDS
+        </Button>
+        <Button size="sm" onClick={close}>DONE</Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <Modal open={open} onClose={close} title={`AI IMPORT · ${bundleName}`}>
+      <div className="space-y-5">
+        {phase === "done" ? doneScreen : (
+          <>
+            {promptStep}
+            <div className="h-px w-full bg-border" aria-hidden />
+            {pasteStep}
+            {errorBox}
+            {actionBar}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
