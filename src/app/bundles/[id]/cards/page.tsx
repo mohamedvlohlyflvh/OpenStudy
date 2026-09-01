@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
+import { BulkActionBar } from "@/components/bulk-action-bar";
 import { TagInput } from "@/components/tag-input";
 import {
   getBundleCards,
@@ -27,6 +28,7 @@ import {
 } from "@/app/actions";
 import { parseCardsFile } from "@/lib/parsers/cards";
 import { cn } from "@/lib/utils";
+import type { BundleRec } from "@/lib/db";
 
 type CardStatus = { label: string; dot: string };
 
@@ -57,6 +59,8 @@ export default function BundleCardsPage() {
 
   const [bundleName, setBundleName] = useState<string>("");
   const [bundleColor, setBundleColor] = useState<string>("#DFE104");
+  const [allBundles, setAllBundles] = useState<BundleRec[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [cards, setCards] = useState<Card[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -89,6 +93,7 @@ export default function BundleCardsPage() {
       getBundles(),
     ]);
     setCards(bundleCards as unknown as Card[]);
+    setAllBundles(bundles);
     const b = bundles.find((x) => x.id === bundleId);
     if (b) {
       setBundleName(b.name);
@@ -319,6 +324,28 @@ export default function BundleCardsPage() {
               </option>
             ))}
           </select>
+          {loaded && filteredCards.length > 0 && (
+            <label className="flex h-10 cursor-pointer items-center gap-2 border-2 border-border bg-bg px-3 text-xs font-bold uppercase tracking-widest text-fg">
+              <input
+                type="checkbox"
+                aria-label="Select all visible cards"
+                checked={filteredCards.length > 0 && filteredCards.every((c) => selectedIds.has(c.id))}
+                onChange={(e) => {
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    if (e.target.checked) {
+                      for (const c of filteredCards) next.add(c.id);
+                    } else {
+                      for (const c of filteredCards) next.delete(c.id);
+                    }
+                    return next;
+                  });
+                }}
+                className="h-4 w-4 cursor-pointer accent-accent"
+              />
+              SELECT ALL
+            </label>
+          )}
         </div>
 
         {/* Cards grid */}
@@ -343,18 +370,36 @@ export default function BundleCardsPage() {
             {filteredCards.map((card) => {
               const flipped = flippedIds.has(card.id);
               const status = getCardStatus(card);
+              const isSelected = selectedIds.has(card.id);
               return (
                 <div
                   key={card.id}
                   className={cn(
                     "group relative flex min-h-[200px] flex-col border-2 p-5 transition-all duration-200",
-                    flipped
+                    isSelected
+                      ? "border-accent bg-accent/5 ring-1 ring-accent/30"
+                      : flipped
                       ? "border-accent bg-accent text-accent-fg"
                       : "border-border bg-bg hover:border-fg"
                   )}
                 >
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(card.id);
+                            else next.delete(card.id);
+                            return next;
+                          });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Select card: ${card.front}`}
+                        className="h-4 w-4 cursor-pointer accent-accent"
+                      />
                       <span
                         className={cn("h-2 w-2 rounded-full", status.dot)}
                       />
@@ -423,6 +468,13 @@ export default function BundleCardsPage() {
           </div>
         )}
       </div>
+
+      <BulkActionBar
+        selectedIds={selectedIds}
+        bundles={allBundles}
+        currentBundleId={bundleId}
+        onCleared={() => setSelectedIds(new Set())}
+      />
 
       {/* Create Modal */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="NEW CARD">
