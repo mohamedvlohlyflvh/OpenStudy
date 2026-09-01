@@ -20,7 +20,10 @@ import { DailyProgress } from "@/components/daily-progress";
 import { WeeklyAnalytics } from "@/components/weekly-analytics";
 import { DeadlineList } from "@/components/deadline-list";
 import { PageLoader } from "@/components/page-loader";
-import { getDashboardStats, getTodayProgress, getWeeklyAnalytics, getGoals } from "./actions";
+import { StatsHeatmap } from "@/components/stats-heatmap";
+import { StatsStreakBadge } from "@/components/stats-streak-badge";
+import { getDashboardStats, getTodayProgress, getWeeklyAnalytics, getGoals, getAllReviewLogs } from "./actions";
+import type { ReviewLogRec } from "@/lib/db";
 import { formatDuration } from "@/lib/utils";
 
 type Stats = Awaited<ReturnType<typeof getDashboardStats>>;
@@ -45,11 +48,13 @@ export default function DashboardPage() {
   const [weekly, setWeekly] = useState<Weekly | null>(null);
   const [today, setToday] = useState<Today | null>(null);
   const [goalCounts, setGoalCounts] = useState<{ active: number; total: number } | null>(null);
+  const [reviewLogs, setReviewLogs] = useState<ReviewLogRec[]>([]);
 
   useEffect(() => {
     getDashboardStats().then(setStats);
     getWeeklyAnalytics().then(setWeekly);
     getTodayProgress().then(setToday);
+    getAllReviewLogs().then(setReviewLogs);
     getGoals().then((goals) =>
       setGoalCounts({
         active: goals.filter((g) => g.status === "in_progress").length,
@@ -135,6 +140,22 @@ export default function DashboardPage() {
             <DeadlineList deadlines={weekly?.deadlines ?? []} />
           </motion.div>
         </div>
+
+        {/* Streak + heatmap */}
+        <motion.div variants={item} className="mb-6">
+          <Card className="space-y-4 !p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold tracking-tight">Review activity</p>
+                <p className="text-[11px] uppercase tracking-widest text-muted-fg">
+                  Daily review log · last 26 weeks
+                </p>
+              </div>
+              <StatsStreakBadge reviews={reviewLogs} />
+            </div>
+            <StatsHeatmap reviews={reviewLogs} weeks={26} />
+          </Card>
+        </motion.div>
 
         {/* Goals shortcut */}
         <motion.div variants={item} className="mb-6">

@@ -636,7 +636,7 @@ export async function getWeeklyAnalytics(): Promise<WeeklyAnalyticsResult> {
 // getDashboardStats already returns totals; we extend it minimally here via a
 // second helper so page.tsx can read both in parallel.
 export async function getTodayProgress() {
-  const [sessions, flashcards] = await Promise.all([
+  const [sessions, reviews] = await Promise.all([
     db.studySessions.toArray(),
     db.reviewLogs.toArray(),
   ]);
@@ -646,11 +646,13 @@ export async function getTodayProgress() {
   const minutesToday = sessions
     .filter((s) => new Date(s.startedAt) >= startOfDay)
     .reduce((a, s) => a + s.durationMin, 0);
-  const cardsReviewedToday = flashcards.filter(
+  const cardsReviewedToday = reviews.filter(
     (r) => new Date(r.reviewedAt) >= startOfDay
   ).length;
+  // Streak is based on REVIEW DAYS, not session days. A user can review cards
+  // without starting a "session" and that should still count.
   const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  const activeDays = new Set(sessions.map((s) => dayKey(new Date(s.startedAt))));
+  const activeDays = new Set(reviews.map((r) => dayKey(new Date(r.reviewedAt))));
   let streakDays = 0;
   const cursor = new Date(now);
   if (!activeDays.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
@@ -659,6 +661,11 @@ export async function getTodayProgress() {
     cursor.setDate(cursor.getDate() - 1);
   }
   return { minutesToday, cardsReviewedToday, streakDays };
+}
+
+/** Returns all review logs (oldest first). For the heatmap + stats page. */
+export async function getAllReviewLogs() {
+  return db.reviewLogs.orderBy("reviewedAt").toArray();
 }
 
 // ─── Global Queries (for Notes page) ─────────────────────────────
