@@ -1507,3 +1507,20 @@ export async function bulkCreateFlashcards(
   await db.flashcards.bulkAdd(rows);
   return { ok: true, created: rows.length };
 }
+
+// ─── Reset card progress (used by bulk reset + hardest-cards table) ──
+export async function batchResetCardProgress(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const now = new Date();
+  await db.flashcards.where("id").anyOf(ids).modify({
+    easeFactor: 2.5,
+    intervalDays: 1,
+    nextReview: now,
+    lastReview: undefined,
+    reviewCount: 0,
+    consecutiveAgain: 0,
+    isLeech: false,
+    updatedAt: now,
+  });
+  return ids.length;
+}

@@ -8,6 +8,7 @@ import { PageLoader } from "@/components/page-loader";
 import { StatsStreakBadge } from "@/components/stats-streak-badge";
 import { StatsHeatmap } from "@/components/stats-heatmap";
 import { RetentionCurve } from "@/components/retention-curve";
+import { HardestCardsTable } from "@/components/hardest-cards-table";
 import { getAllReviewLogs, getBundles, getFlashcards } from "@/app/actions";
 import type { BundleRec, FlashcardRec, ReviewLogRec } from "@/lib/db";
 
@@ -74,7 +75,10 @@ export default function StatsPage() {
 
       <Card className="mt-6 !p-5">
         <p className="mb-1 font-semibold tracking-tight">Hardest cards</p>
-        <p className="text-[11px] uppercase tracking-widest text-muted-fg">Coming next</p>
+        <p className="mb-3 text-[11px] uppercase tracking-widest text-muted-fg">
+          Lowest accuracy (min. 3 reviews)
+        </p>
+        <HardestCardsTable reviews={reviews} cards={cards} bundles={bundles} />
       </Card>
     </div>
   );
