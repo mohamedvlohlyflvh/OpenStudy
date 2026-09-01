@@ -9,6 +9,7 @@ import { StatsStreakBadge } from "@/components/stats-streak-badge";
 import { StatsHeatmap } from "@/components/stats-heatmap";
 import { RetentionCurve } from "@/components/retention-curve";
 import { HardestCardsTable } from "@/components/hardest-cards-table";
+import { ForecastCard, BundleMasteryTable } from "@/components/stats-forecast-mastery";
 import { getAllReviewLogs, getBundles, getFlashcards } from "@/app/actions";
 import type { BundleRec, FlashcardRec, ReviewLogRec } from "@/lib/db";
 
@@ -64,13 +65,19 @@ export default function StatsPage() {
         </Card>
         <Card className="!p-5">
           <p className="mb-1 font-semibold tracking-tight">Forecast</p>
-          <p className="text-[11px] uppercase tracking-widest text-muted-fg">Coming next</p>
+          <p className="mb-3 text-[11px] uppercase tracking-widest text-muted-fg">
+            Cards coming due (cumulative)
+          </p>
+          <ForecastCard cards={cards} />
         </Card>
       </div>
 
       <Card className="mt-6 !p-5">
         <p className="mb-1 font-semibold tracking-tight">Per-bundle mastery</p>
-        <p className="text-[11px] uppercase tracking-widest text-muted-fg">Coming next</p>
+        <p className="mb-3 text-[11px] uppercase tracking-widest text-muted-fg">
+          Weakest bundles first
+        </p>
+        <BundleMasteryTable cards={cards} bundles={bundles} reviews={reviews} />
       </Card>
 
       <Card className="mt-6 !p-5">
