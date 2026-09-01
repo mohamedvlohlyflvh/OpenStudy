@@ -572,7 +572,13 @@ function FlashcardsContent() {
           )}
           {selectedBundle && (() => {
             const b = bundles.find((x) => x.id === selectedBundle);
-            return b ? <AiImportButton bundleId={b.id} bundleName={b.name} /> : null;
+            return b ? (
+              <AiImportButton
+                bundleId={b.id}
+                bundleName={b.name}
+                onImported={reloadCards}
+              />
+            ) : null;
           })()}
           <button
             onClick={() => router.push("/bundles")}

@@ -12,10 +12,12 @@ export function AiImportModal({
   bundleId,
   bundleName,
   onClose,
+  onImported,
 }: {
   bundleId: string;
   bundleName: string;
   onClose: () => void;
+  onImported?: () => void | Promise<void>;
 }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -78,8 +80,16 @@ export function AiImportModal({
       if (!r.ok) { setErr(r.error || "Import failed."); setPhase("error"); return; }
       setCreated(r.created);
       setPhase("done");
-      // Refresh any server-rendered data on the page so the new cards show up
-      router.refresh();
+      // Tell the parent to re-fetch the cards (so the new ones show up
+      // without a manual page refresh). Fall back to router.refresh if
+      // the caller didn't provide a callback.
+      try {
+        if (onImported) await onImported();
+        else router.refresh();
+      } catch {
+        /* parent re-fetch failed — the cards are still saved, the user
+           just won't see them until they refresh manually */
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
       setPhase("error");

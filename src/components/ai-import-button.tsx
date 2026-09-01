@@ -7,9 +7,11 @@ import { Button } from "./ui";
 export function AiImportButton({
   bundleId,
   bundleName,
+  onImported,
 }: {
   bundleId: string;
   bundleName: string;
+  onImported?: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -29,6 +31,7 @@ export function AiImportButton({
           bundleId={bundleId}
           bundleName={bundleName}
           onClose={() => setOpen(false)}
+          onImported={onImported}
         />
       )}
     </>
