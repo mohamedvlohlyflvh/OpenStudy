@@ -8,12 +8,14 @@
 
 | Feature | Description |
 |---------|-------------|
-| **Dashboard** | Widgets for due cards, streaks and session stats with themed loaders |
-| **Subjects** | Organize material into subjects with per-subject progress |
-| **Flashcards** | Spaced-repetition review engine |
-| **Notes** | Markdown notes linked to subjects |
-| **Sessions** | Timed study sessions with history |
-| **Bundles** | Group cards into study bundles |
+| **Dashboard** | Due-card widget, daily review heatmap (last 26 weeks), streak counter with auto-tracking from reviews, session stats with themed loaders |
+| **Subjects** | Organize material into subjects with per-subject progress, custom color + 12-icon picker |
+| **Flashcards** | Spaced-repetition review engine with 3D flip animation and leech auto-detection |
+| **Bundles** | Group cards into study bundles with checkbox select + floating bulk action bar (tag / move / reset / delete) |
+| **Notes** | Markdown notes linked to subjects; "AI IMPORT" generates flashcards from any note via NotebookLM |
+| **Sessions** | Timed study sessions with auto-logging from the Focus Zone Pomodoro |
+| **Stats** | Dedicated `/stats` page with 52-week heatmap, retention curve SVG, hardest cards table (with per-card reset), forecast widget, per-bundle mastery ranking |
+| **Focus Zone** | Pomodoro timer, ambient soundscapes, "Remind Me" browser-notification button (15m/1h/4h presets) |
 | **Offline-first** | Dexie/IndexedDB — everything lives in the browser, works without internet |
 | **PWA** | Installable app with manifest + offline fallback route |
 
