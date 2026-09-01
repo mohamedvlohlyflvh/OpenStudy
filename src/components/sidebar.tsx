@@ -11,6 +11,7 @@ import {
   Timer,
   Target,
   Settings,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/sessions", label: "Sessions", icon: Timer },
   { href: "/goals", label: "Goals", icon: Target },
+  { href: "/stats", label: "Stats", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
