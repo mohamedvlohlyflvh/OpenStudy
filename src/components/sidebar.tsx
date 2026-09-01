@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   BookOpen,
@@ -48,25 +47,6 @@ export function Sidebar() {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const { sidebarOpen, toggleSidebar } = useAppStore();
-  const [dueCards, setDueCards] = useState<number | null>(null);
-
-  // Live due badge — light poll (60s) so the badge tracks reviews done
-  useEffect(() => {
-    let alive = true;
-    const load = () => {
-      import("@/app/actions").then(({ getDueCount }) => {
-        getDueCount().then((n) => {
-          if (alive) setDueCards(n);
-        });
-      });
-    };
-    load();
-    const iv = setInterval(load, 60_000);
-    return () => {
-      alive = false;
-      clearInterval(iv);
-    };
-  }, [pathname]);
 
   return (
     <aside
@@ -121,12 +101,6 @@ export function Sidebar() {
                 <Icon size={18} aria-hidden />
                 {sidebarOpen && <span>{label}</span>}
               </span>
-              {/* DUE badge on Flashcards */}
-              {sidebarOpen && href === "/flashcards" && dueCards !== null && dueCards > 0 && (
-                <span className="relative z-10 ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 font-mono text-[10px] font-bold tabular-nums text-accent-fg">
-                  {dueCards > 99 ? "99+" : dueCards}
-                </span>
-              )}
             </Link>
           );
         })}
