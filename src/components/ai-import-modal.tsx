@@ -2,20 +2,26 @@
 import { useState } from "react";
 import { Clipboard, Sparkles, Check, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button, Modal } from "./ui";
-import { bulkCreateFlashcards } from "@/app/actions";
+import { bulkCreateFlashcards, bulkCreateFlashcardsFromNote } from "@/app/actions";
 import { NOTEBOOKLM_IMPORT_PROMPT } from "@/lib/ai-import";
 import { useRouter } from "next/navigation";
+import type { BundleRec } from "@/lib/db";
 
 type Phase = "idle" | "importing" | "done" | "error";
 
 export function AiImportModal({
-  bundleId,
-  bundleName,
+  kind,
+  sourceId,
+  sourceName,
+  availableBundles,
   onClose,
   onImported,
 }: {
-  bundleId: string;
-  bundleName: string;
+  kind: "bundle" | "note";
+  sourceId: string;
+  sourceName: string;
+  /** Required when kind === "note" so user picks a destination bundle. */
+  availableBundles?: BundleRec[];
   onClose: () => void;
   onImported?: () => void | Promise<void>;
 }) {
@@ -26,9 +32,12 @@ export function AiImportModal({
   const [created, setCreated] = useState(0);
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(false);
+  // For note source: which bundle to put the cards into.
+  const [targetBundleId, setTargetBundleId] = useState<string>(
+    () => availableBundles?.[0]?.id ?? ""
+  );
 
-  // Live detection of how many cards are in the pasted JSON, for the
-  // "IMPORT N CARDS" label.
+  // Live detection of how many cards are in the pasted JSON.
   const detectedCount = (() => {
     if (!pasted.trim()) return 0;
     try {
@@ -46,7 +55,6 @@ export function AiImportModal({
 
   const close = () => {
     setOpen(false);
-    // Allow the close animation to play before unmounting
     setTimeout(onClose, 150);
   };
 
@@ -73,22 +81,23 @@ export function AiImportModal({
 
   const importNow = async () => {
     if (!pasted.trim()) { setErr("Paste some JSON first."); setPhase("error"); return; }
+    if (kind === "note" && !targetBundleId) {
+      setErr("Pick a destination bundle for these cards."); setPhase("error"); return;
+    }
     setPhase("importing");
     setErr("");
     try {
-      const r = await bulkCreateFlashcards(bundleId, pasted);
+      const r = kind === "bundle"
+        ? await bulkCreateFlashcards(sourceId, pasted)
+        : await bulkCreateFlashcardsFromNote(sourceId, targetBundleId, pasted);
       if (!r.ok) { setErr(r.error || "Import failed."); setPhase("error"); return; }
       setCreated(r.created);
       setPhase("done");
-      // Re-fetch the parent list so the new cards show up without a
-      // manual page refresh. Fallback to router.refresh if the caller
-      // didn't provide a callback.
       try {
         if (onImported) await onImported();
         else router.refresh();
       } catch {
-        /* parent re-fetch failed — cards are saved, user just won't
-           see them until they refresh manually */
+        /* parent re-fetch failed */
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -97,7 +106,7 @@ export function AiImportModal({
   };
 
   // ────────────────────────────────────────────────────────────────
-  // Body variants — each phase gets its own layout
+  // Body variants
   // ────────────────────────────────────────────────────────────────
 
   const promptStep = (
@@ -121,10 +130,47 @@ export function AiImportModal({
     </div>
   );
 
+  // For note source: a bundle picker. For bundle source: a static label.
+  const destinationStep = kind === "note" ? (
+    <div className="space-y-2">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+        STEP 02 — CHOOSE A DESTINATION BUNDLE
+      </p>
+      {availableBundles && availableBundles.length > 0 ? (
+        <select
+          value={targetBundleId}
+          onChange={(e) => setTargetBundleId(e.target.value)}
+          className="w-full rounded-xl border-2 border-border bg-bg px-3 py-2 text-sm font-bold text-fg focus:border-accent focus:outline-none"
+          aria-label="Destination bundle"
+        >
+          {availableBundles.map((b) => (
+            <option key={b.id} value={b.id} className="bg-bg text-fg">
+              {b.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <p className="text-sm text-warning">
+          NO BUNDLES YET — CREATE ONE IN /bundles FIRST.
+        </p>
+      )}
+    </div>
+  ) : (
+    <div className="space-y-1">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+        STEP 02 — CONFIRM DESTINATION
+      </p>
+      <p className="text-sm text-fg">
+        Cards will be added to{" "}
+        <span className="font-bold text-accent">{sourceName}</span>.
+      </p>
+    </div>
+  );
+
   const pasteStep = (
     <div className="space-y-2">
       <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-fg">
-        STEP 02 — PASTE THE JSON BELOW
+        {kind === "note" ? "STEP 03" : "STEP 02"} — PASTE THE JSON BELOW
       </p>
       <textarea
         value={pasted}
@@ -167,16 +213,16 @@ export function AiImportModal({
     </div>
   ) : null;
 
+  const canImport = pasted.trim() &&
+    detectedCount > 0 &&
+    (kind === "bundle" || !!targetBundleId);
+
   const actionBar = (
     <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
       <Button variant="secondary" size="sm" onClick={close}>
         CANCEL
       </Button>
-      <Button
-        size="sm"
-        onClick={importNow}
-        disabled={phase === "importing" || !pasted.trim() || detectedCount === 0}
-      >
+      <Button size="sm" onClick={importNow} disabled={phase === "importing" || !canImport}>
         {phase === "importing" ? (
           <><Loader2 size={14} className="animate-spin" /> IMPORTING…</>
         ) : (
@@ -185,6 +231,10 @@ export function AiImportModal({
       </Button>
     </div>
   );
+
+  const targetBundleName = kind === "note"
+    ? availableBundles?.find((b) => b.id === targetBundleId)?.name ?? "—"
+    : sourceName;
 
   const doneScreen = (
     <div className="space-y-4">
@@ -195,12 +245,16 @@ export function AiImportModal({
             IMPORTED {created} CARD{created !== 1 ? "S" : ""}
           </p>
           <p className="mt-0.5 text-xs text-muted-fg uppercase tracking-widest">
-            ADDED TO {bundleName}
+            ADDED TO {targetBundleName}
           </p>
         </div>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={() => router.push(`/bundles/${bundleId}/cards`)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => router.push(kind === "bundle" ? `/bundles/${sourceId}/cards` : `/bundles/${targetBundleId}/cards`)}
+        >
           REVIEW CARDS
         </Button>
         <Button size="sm" onClick={close}>DONE</Button>
@@ -209,11 +263,17 @@ export function AiImportModal({
   );
 
   return (
-    <Modal open={open} onClose={close} title={`AI IMPORT · ${bundleName}`}>
+    <Modal
+      open={open}
+      onClose={close}
+      title={`AI IMPORT · ${kind === "note" ? "Note: " : ""}${sourceName}`}
+    >
       <div className="space-y-5">
         {phase === "done" ? doneScreen : (
           <>
             {promptStep}
+            <div className="h-px w-full bg-border" aria-hidden />
+            {destinationStep}
             <div className="h-px w-full bg-border" aria-hidden />
             {pasteStep}
             {errorBox}

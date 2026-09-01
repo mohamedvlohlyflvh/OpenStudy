@@ -3,14 +3,18 @@ import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { AiImportModal } from "./ai-import-modal";
 import { Button } from "./ui";
+import type { BundleRec } from "@/lib/db";
 
 export function AiImportButton({
   bundleId,
   bundleName,
+  availableBundles,
   onImported,
 }: {
   bundleId: string;
   bundleName: string;
+  /** Required when importing from a note (the note needs a destination). */
+  availableBundles?: BundleRec[];
   onImported?: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -28,8 +32,10 @@ export function AiImportButton({
       </Button>
       {open && (
         <AiImportModal
-          bundleId={bundleId}
-          bundleName={bundleName}
+          kind="bundle"
+          sourceId={bundleId}
+          sourceName={bundleName}
+          availableBundles={availableBundles}
           onClose={() => setOpen(false)}
           onImported={onImported}
         />
