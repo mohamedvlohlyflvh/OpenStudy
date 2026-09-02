@@ -116,7 +116,7 @@ export function AiImportModal({
       </p>
       <p className="text-sm text-muted-fg leading-relaxed">
         Paste this prompt into NotebookLM (or any chat LLM) along with your lesson.
-        It returns a JSON array of <code className="font-mono text-accent">{"{front, back}"}</code> cards.
+        It returns a JSON array of <code className="font-mono text-accent">{"{front, back, description?}"}</code> cards.
       </p>
       <div className="flex flex-wrap gap-2 pt-1">
         <Button size="sm" variant="secondary" onClick={copyPrompt}>
@@ -175,7 +175,7 @@ export function AiImportModal({
       <textarea
         value={pasted}
         onChange={(e) => { setPasted(e.target.value); if (phase === "error") setPhase("idle"); }}
-        placeholder={`[\n  { "front": "What is 2+2?", "back": "4" },\n  { "front": "...", "back": "..." }\n]`}
+        placeholder={`[\n  { "front": "What is 2+2?", "back": "4", "description": "Optional hint" },\n  { "front": "...", "back": "..." }\n]`}
         className="w-full min-h-[200px] resize-y rounded-xl border-2 border-border bg-bg p-3 font-mono text-sm text-fg leading-relaxed placeholder:text-muted-fg/50 focus:border-accent focus:outline-none"
         spellCheck={false}
         autoComplete="off"

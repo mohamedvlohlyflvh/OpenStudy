@@ -44,10 +44,11 @@ export function parseAiCardsInput(raw: string): AiCardInput[] {
  * The single prompt we hand to the user. One block, copy it as-is.
  * Designed for NotebookLM specifically but works in any chat LLM.
  */
-export const NOTEBOOKLM_IMPORT_PROMPT = `You are a flashcard generator. Read the source below and return a JSON array of study flashcards. Each card must be an object with exactly two fields:
+export const NOTEBOOKLM_IMPORT_PROMPT = `You are a flashcard generator. Read the source below and return a JSON array of study flashcards. Each card must be an object with two required fields and one optional field:
 
   "front" — a short question, term, or prompt (max 200 chars)
   "back"  — the answer, definition, or explanation (max 800 chars)
+  "description" — an optional short hint, context, or mnemonic shown with the card (max 200 chars). Omit it when the source has nothing useful to add.
 
 Rules:
 - Return ONLY the JSON array, nothing else — no prose, no markdown fences, no commentary.
@@ -59,7 +60,7 @@ Rules:
 
 Output format (return this exact shape, with your cards in place of "..."):
 [
-  { "front": "...", "back": "..." },
+  { "front": "...", "back": "...", "description": "..." },
   { "front": "...", "back": "..." }
 ]
 
