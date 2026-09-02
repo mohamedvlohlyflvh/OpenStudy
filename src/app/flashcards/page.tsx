@@ -18,7 +18,6 @@ import {
   deleteFlashcard,
   getBundles,
   getBundleCards,
-  reviewFlashcardWithLog,
   getLeechCards,
   unLeechCard,
   getHeatmapData,
@@ -33,15 +32,13 @@ import {
   batchMoveCards,
   restoreFlashcard,
   getFlashcardSnapshot,
-  exportAllData,
-  importAllData,
 } from "@/app/actions";
 import { SubjectTopicSelect } from "@/components/subject-topic-select";
 import { cn } from "@/lib/utils";
 import { spotlightProps } from "@/lib/interactions";
 import { motion } from "framer-motion";
 import { parseCardsFile } from "@/lib/parsers/cards";
-import { db as offlineDb, cacheBundles, cacheFlashcards, getCachedBundleCards, getCachedBundles } from "@/lib/db";
+import { db as offlineDb, cacheBundles, cacheFlashcards, getCachedBundleCards } from "@/lib/db";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { ImageUploadButton } from "@/components/image-upload-button";
@@ -54,13 +51,13 @@ type Subject = { id: string; name: string; color: string };
 
 const ratingButtons = [
   { value: 0, label: "DIDN'T REMEMBER", shortLabel: "AGAIN", color: "border-danger bg-danger/10 text-danger hover:bg-danger hover:text-on-color" },
-  { value: 2, label: "REMEMBERED WITH DIFFICULTY", shortLabel: "HARD", color: "border-warning bg-warning/10 text-warning hover:bg-warning hover:text-on-color" },
+  { value: 3, label: "REMEMBERED WITH DIFFICULTY", shortLabel: "HARD", color: "border-warning bg-warning/10 text-warning hover:bg-warning hover:text-on-color" },
   { value: 5, label: "REMEMBERED EASILY", shortLabel: "EASY", color: "border-success bg-success/10 text-success hover:bg-success hover:text-on-color" },
 ];
 
-function getCardStatus(card: { reviewCount: number; nextReview: Date | string }) {
+function getCardStatus(card: { reviewCount: number; nextReview: Date | string }, nowMs: number) {
   const rc = card.reviewCount;
-  const isDue = new Date(card.nextReview).getTime() <= Date.now();
+  const isDue = new Date(card.nextReview).getTime() <= nowMs;
   if (rc === 0) return { label: "NEW", dot: "bg-gray-400" };
   if (isDue) return { label: "DUE", dot: "bg-danger" };
   if (rc <= 3) return { label: "LEARNING", dot: "bg-warning" };
@@ -77,9 +74,13 @@ function FlashcardsContent() {
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [selectedBundle, setSelectedBundle] = useState(bundleParam || "");
   const allDueParam = searchParams.get("all") === "1";
-  const [allDue, setAllDue] = useState(allDueParam);
+  // Derived from the URL (?all=1) — the old setAllDue was never called, which
+  // froze Study All Due at its mount-time value.
+  const allDue = allDueParam;
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // wall clock — captured once in the mount effect (react-hooks/purity bans Date.now() in render)
+  const [nowMs, setNowMs] = useState(0);
 
   // ─── Review state ───────────────────────────────────────────
   const [dueCards, setDueCards] = useState<Flashcard[]>([]);
@@ -108,7 +109,6 @@ function FlashcardsContent() {
   const [leechLoaded, setLeechLoaded] = useState(false);
 
   // ─── Browse-all (search across all bundles) ───────────────
-  const [browseAll, setBrowseAll] = useState(false);
   const [browseCards, setBrowseCards] = useState<ManagedFlashcard[]>([]);
   const [browseBundles, setBrowseBundles] = useState<Bundle[]>([]);
   const [browseLoaded, setBrowseLoaded] = useState(false);
@@ -165,7 +165,6 @@ function FlashcardsContent() {
   const [editCard, setEditCard] = useState<ManagedFlashcard | null>(null);
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
-  const [editTopicId, setEditTopicId] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ManagedFlashcard | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -206,32 +205,50 @@ function FlashcardsContent() {
       setSubjects(s);
       // Cache for offline
       cacheBundles(b.map((x) => ({ id: x.id, name: x.name, description: x.description, color: x.color, cardCount: x._count.flashcards, synced: true })));
-      const bid = bundleParam || "";
-      setSelectedBundle(bid);
-      const loadCards = async () => {
-        if (bid) {
-          try {
-            const cards = await getBundleCards(bid);
-            setDueCards(cards as Flashcard[]);
-            cacheFlashcards(cards.map((c) => ({ id: c.id, bundleId: c.bundleId, front: c.front, back: c.back, reviewCount: c.reviewCount, nextReview: new Date(c.nextReview).getTime(), isLeech: c.isLeech, synced: true })));
-          } catch {
-            // offline fallback
-            const cached = await getCachedBundleCards(bid);
-            setDueCards(cached as unknown as Flashcard[]);
-          }
-        } else if (allDueParam) {
-          // Study All Due: load the due queue across every bundle
-          const cards = await getAllDueFlashcards();
-          setDueCards(cards as Flashcard[]);
-        } else {
-          const cards = await getAllFlashcards();
-          setDueCards(cards as Flashcard[]);
-        }
-      };
-      loadCards();
+      setSelectedBundle(bundleParam || "");
       setLoaded(true);
     });
   }, [bundleParam]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNowMs(Date.now());
+  }, []);
+
+  // ─── Review queue loader — runs on mount AND whenever the bundle context
+  // changes (dropdown select, ?bundle=, ?all=1). Resets run state so switching
+  // bundles can no longer keep serving the previous bundle's cards while the
+  // header/ADD CARD/export point at the new one.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let cards: Flashcard[];
+      if (!selectedBundle && !allDue) {
+        cards = []; // bundle-overview view — nothing to serve
+      } else if (allDue) {
+        // Study All Due: due queue across every bundle
+        cards = (await getAllDueFlashcards()) as Flashcard[];
+      } else {
+        try {
+          cards = (await getBundleCards(selectedBundle)) as Flashcard[];
+        } catch {
+          // offline fallback
+          const cached = await getCachedBundleCards(selectedBundle);
+          cards = cached as unknown as Flashcard[];
+        }
+      }
+      if (cancelled) return;
+      setDueCards(cards);
+      setCurrentIndex(0);
+      setIsFlipped(false);
+      setLearningQueue([]);
+      setCompletedCount(0);
+      setTotalReviewed(0);
+      sessionLoggedRef.current = false;
+      sessionRef.current = { reviewed: 0, correct: 0, startedAt: 0 };
+    })();
+    return () => { cancelled = true; };
+  }, [selectedBundle, allDue]);
 
   const loadDueCards = useCallback(async () => {
     let cards: Flashcard[];
@@ -333,7 +350,7 @@ function FlashcardsContent() {
         setReviewing(false);
       }
     },
-    [activeCard, reviewing, currentIndex, dueCards, loadDueCards, fetchMoreDue, triggerConfetti]
+    [activeCard, reviewing, currentIndex, dueCards, reviewCard, fetchMoreDue, triggerConfetti]
   );
 
   // ─── Speed Sprint timer ─────────────────────────────────────
@@ -354,14 +371,19 @@ function FlashcardsContent() {
       }, 1000);
       return () => { if (sprintRef.current) clearInterval(sprintRef.current); };
     }
-  }, [sprintMode, isFlipped, activeCard]);
+  }, [sprintMode, isFlipped, activeCard, handleReview]);
 
-  // ─── Keyboard handler ───────────────────────────────────────
+  // ─── Keyboard handler ─────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+
+      // Review keys only apply in review mode — in browse/leeches/stats they
+      // used to silently submit SRS ratings for an off-screen card and
+      // preventDefault() Space/Enter (breaking scroll and UI shortcuts).
+      if (mode !== "review") return;
 
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
@@ -376,7 +398,7 @@ function FlashcardsContent() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isFlipped, handleReview]);
+  }, [mode, isFlipped, handleReview]);
 
   useEffect(() => {
     if (mode === "browse" && !browseLoaded) loadBrowseAll(); // eslint-disable-line react-hooks/set-state-in-effect
@@ -429,7 +451,7 @@ function FlashcardsContent() {
     if (!editCard || !editFront.trim() || !editBack.trim()) return;
     setSaving(true);
     try {
-      await updateFlashcard(editCard.id, { front: editFront.trim(), back: editBack.trim(), topicId: editTopicId || undefined });
+      await updateFlashcard(editCard.id, { front: editFront.trim(), back: editBack.trim() });
       setEditCard(null);
     } finally {
       setSaving(false);
@@ -475,7 +497,8 @@ function FlashcardsContent() {
   const toggleBrowseSelect = (id: string) => {
     setBrowseSelected((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   };
@@ -681,7 +704,7 @@ function FlashcardsContent() {
             {(["review", "browse", "leeches", "stats"] as const).map((m) => (
               <button
                 key={m}
-                onClick={() => setMode(m)}
+                onClick={() => { setMode(m); setIsFlipped(false); }}
                 className={cn(
                   "relative shrink-0 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors",
                   mode === m ? "text-accent-fg" : "text-muted-fg hover:text-fg"
@@ -734,12 +757,9 @@ function FlashcardsContent() {
                     key={bundle.id}
                     onClick={() => setSelectedBundle(bundle.id)}
                     {...spotlightProps()}
-                    className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all hover:border-yellow-400/50 hover:bg-zinc-900 text-left"
+                    className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_14px_35px_-15px_rgba(0,0,0,0.7)] text-left"
+                    style={{ backgroundImage: `radial-gradient(140% 120% at 0% 0%, ${(bundle.color || "#DFE104")}14, transparent 55%)` }}
                   >
-                    <span
-                      className="absolute inset-x-0 top-0 h-0.5 rounded-t-xl"
-                      style={{ backgroundColor: bundle.color || "#DFE104", boxShadow: `0 0 12px ${bundle.color || "#DFE104"}55` }}
-                    />
                     <div
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-black transition-transform duration-200 group-hover:scale-110"
                       style={{
@@ -804,7 +824,18 @@ function FlashcardsContent() {
               </p>
             </div>
             <div className="flex justify-center gap-4">
-              <Button onClick={() => { setCompletedCount(0); setTotalReviewed(0); loadDueCards(); }}>
+              <Button
+                onClick={() => {
+                  setCompletedCount(0);
+                  setTotalReviewed(0);
+                  // Allow the next run to auto-log its own study session —
+                  // this ref previously stayed true forever, so only the
+                  // first run per page load was ever logged.
+                  sessionLoggedRef.current = false;
+                  sessionRef.current = { reviewed: 0, correct: 0, startedAt: 0 };
+                  loadDueCards();
+                }}
+              >
                 STUDY AGAIN
               </Button>
               <Button variant="secondary" onClick={() => setSelectedBundle("")}>
@@ -821,7 +852,7 @@ function FlashcardsContent() {
                 {learningQueue.length > 0 && (
                   <Badge variant="warning">RELEARNING × {learningQueue.length}</Badge>
                 )}
-                <Badge variant="success"><Zap size={12} className="mr-1" />{totalDue} DUE</Badge>
+                <Badge variant="success"><Zap size={12} className="mr-1" />{totalDue} IN QUEUE</Badge>
               </div>
             </div>
 
@@ -869,7 +900,7 @@ function FlashcardsContent() {
                     <div className="flex items-center justify-between px-7 pt-5">
                       <Badge>QUESTION</Badge>
                       {(() => {
-                        const st = getCardStatus(activeCard);
+                        const st = getCardStatus(activeCard, nowMs);
                         return (
                           <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
                             <span className={cn("h-2 w-2 rounded-full", st.dot)} />
@@ -1021,12 +1052,9 @@ function FlashcardsContent() {
                   key={bundle.id}
                   onClick={() => router.push(`/bundles/${bundle.id}/cards`)}
                   {...spotlightProps()}
-                  className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all hover:border-yellow-400/50 hover:bg-zinc-900"
+                  className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_14px_35px_-15px_rgba(0,0,0,0.7)]"
+                  style={{ backgroundImage: `radial-gradient(140% 120% at 0% 0%, ${(bundle.color || "#DFE104")}14, transparent 55%)` }}
                 >
-                  <span
-                    className="absolute inset-x-0 top-0 h-0.5 rounded-t-xl"
-                    style={{ backgroundColor: bundle.color || "#DFE104", boxShadow: `0 0 12px ${(bundle.color || "#DFE104")}55` }}
-                  />
                   <div
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-black transition-transform duration-200 group-hover:scale-110"
                     style={{
@@ -1062,7 +1090,7 @@ function FlashcardsContent() {
               {browseFilteredCards.map((card) => {
                 const flipped = browseFlipped.has(card.id);
                 const selected = browseSelected.has(card.id);
-                const status = getCardStatus(card);
+                const status = getCardStatus(card, nowMs);
                 return (
                   <div
                     key={card.id}
@@ -1086,7 +1114,7 @@ function FlashcardsContent() {
                     </div>
                     <div
                       className="flex flex-1 cursor-pointer items-center justify-center text-center"
-                      onClick={() => setBrowseFlipped((prev) => { const n = new Set(prev); n.has(card.id) ? n.delete(card.id) : n.add(card.id); return n; })}
+                      onClick={() => setBrowseFlipped((prev) => { const n = new Set(prev); if (n.has(card.id)) n.delete(card.id); else n.add(card.id); return n; })}
                     >
                       <div>
                         <span className={cn("mb-2 inline-block text-[10px] font-bold uppercase tracking-widest", flipped ? "text-accent-fg/70" : "text-muted-fg")}>
@@ -1188,7 +1216,10 @@ function FlashcardsContent() {
               {Array.from({ length: 90 }).map((_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() - (89 - i));
-                const dateStr = d.toISOString().split("T")[0];
+                // Local-date key — matches getHeatmapData()/getStreak()
+                // bucketing (ISO/UTC shifted evening reviews to the next day
+                // in positive-offset timezones like UTC+3).
+                const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
                 const entry = heatmap.find((h) => h.date === dateStr);
                 const count = entry?.count ?? 0;
                 const intensity = count === 0 ? "bg-muted" : count < 5 ? "bg-accent/30" : count < 15 ? "bg-accent/60" : "bg-accent";

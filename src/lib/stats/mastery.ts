@@ -15,8 +15,6 @@ export interface BundleMastery {
   leechCount: number;
 }
 
-const ONE_DAY = 24 * 60 * 60 * 1000;
-
 /**
  * Per-bundle mastery: total cards, accuracy, currently due, leech count.
  * Sorted by accuracy ASC (weakest first) so the table surfaces
@@ -25,9 +23,10 @@ const ONE_DAY = 24 * 60 * 60 * 1000;
 export function buildBundleMastery(
   reviews: ReviewLogRec[],
   cards: FlashcardRec[],
-  bundles: BundleRec[]
+  bundles: BundleRec[],
+  nowMs: number = Date.now()
 ): BundleMastery[] {
-  const now = Date.now();
+  const now = nowMs;
   const cardByBundle = new Map<string, FlashcardRec[]>();
   for (const c of cards) {
     if (!c.bundleId) continue;

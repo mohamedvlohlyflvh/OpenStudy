@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { RotateCcw, AlertTriangle, Check } from "lucide-react";
 import { Button, Modal } from "./ui";
-import { findHardestCards, type HardestCard } from "@/lib/stats";
+import { findHardestCards } from "@/lib/stats";
 import { batchResetCardProgress } from "@/app/actions";
 import type { BundleRec, FlashcardRec, ReviewLogRec } from "@/lib/db";
 import { useRouter } from "next/navigation";
@@ -103,7 +103,7 @@ export function HardestCardsTable({
           <div className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
             <AlertTriangle size={14} className="shrink-0 mt-0.5" />
             <p>
-              This resets the card to "new": ease factor 2.5, 1-day interval, all
+              This resets the card to &quot;new&quot;: ease factor 2.5, 1-day interval, all
               review history on this card is kept (for stats) but the card will
               show up in your review queue starting today.
             </p>

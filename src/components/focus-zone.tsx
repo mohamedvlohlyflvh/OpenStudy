@@ -87,6 +87,10 @@ export function FocusZone() {
         title,
         durationMin: duration,
         completed: true,
+        // Stamp the true start (now − elapsed work) so day-bucketing in
+        // weekly analytics/streaks attributes a midnight-crossing session
+        // to the day it began, not the second it ended.
+        startedAt: new Date(Date.now() - snap.workSeconds * 1000),
       }).catch(() => {});
     }
   };
@@ -216,10 +220,8 @@ export function FocusZone() {
         )}
       </div>
 
-      <RemindMeControl dueCount={dueCount} />
-
       {/* Presets — built-in + saved custom techniques */}
-      <div className="mb-6 flex flex-wrap justify-center gap-2">
+      <div className="flex flex-wrap justify-center gap-2">
         {BUILTIN_PRESETS.map((p) => {
           const isActive =
             workMin === p.workMin &&
@@ -266,10 +268,14 @@ export function FocusZone() {
         ))}
       </div>
 
+      <div className="mt-4 flex justify-center">
+        <RemindMeControl dueCount={dueCount} />
+      </div>
+
       {/* Current task banner + subject */}
       <motion.div
         layout
-        className="glass-inset flex items-center gap-3 rounded-2xl px-4 py-3"
+        className="glass-inset mt-6 flex items-center gap-3 rounded-2xl px-4 py-3"
       >
         <span className="h-2 w-2 shrink-0 rounded-full bg-flow animate-pulse-dot" aria-hidden />
         <input

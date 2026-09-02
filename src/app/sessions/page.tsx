@@ -120,13 +120,17 @@ export default function SessionsPage() {
   const persistSession = (title: string, seconds: number, startedAt: Date | null) => {
     if (seconds < 3) return; // ignore accidental taps
     const duration = Math.max(1, Math.round(seconds / 60));
+    // startedAt fallback: true start (now − elapsed) instead of the end
+    // timestamp, so day-bucketing attributes midnight-crossing sessions
+    // to the day they began.
+    const effectiveStart = startedAt ?? new Date(Date.now() - seconds * 1000);
     startTransition(async () => {
       const session = await createStudySession({
         subjectId: selectedSubjectId || undefined,
         title,
         durationMin: duration,
         completed: true,
-        startedAt: startedAt ?? undefined,
+        startedAt: effectiveStart,
       });
       setSessions((prev) => [
         {

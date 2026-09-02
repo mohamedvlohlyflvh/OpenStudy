@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { forecastDue, buildBundleMastery, type BundleMastery } from "@/lib/stats";
 import type { BundleRec, FlashcardRec } from "@/lib/db";
 
@@ -34,7 +34,15 @@ export function BundleMasteryTable({
   bundles: BundleRec[];
   reviews: BundleMastery["bundleId"] extends never ? never : Parameters<typeof buildBundleMastery>[0];
 }) {
-  const rows = useMemo(() => buildBundleMastery(reviews, cards, bundles), [reviews, cards, bundles]);
+  // wall clock — captured once in the mount effect (react-hooks/purity bans Date.now() in render)
+  const [nowMs, setNowMs] = useState(0);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNowMs(Date.now());
+  }, []);
+
+  const rows = useMemo(() => buildBundleMastery(reviews, cards, bundles, nowMs), [reviews, cards, bundles, nowMs]);
 
   if (rows.length === 0) {
     return (

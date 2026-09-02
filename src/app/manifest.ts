@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "StudyMax",
-    short_name: "StudyMax",
+    name: "OpenStudy",
+    short_name: "OpenStudy",
     description: "Local-first flashcards, notes & study sessions — works fully offline.",
     start_url: "/",
     scope: "/",

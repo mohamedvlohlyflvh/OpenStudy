@@ -170,12 +170,8 @@ export default function BundlesPage() {
               href={`/flashcards?bundle=${bundle.id}`}
               {...spotlightProps()}
               className="spotlight-card group relative flex h-72 w-full max-w-xs flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 text-left transition-all duration-200 hover:-translate-y-1 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_18px_45px_-15px_rgba(250,204,21,0.25)]"
+              style={{ backgroundImage: `radial-gradient(140% 120% at 0% 0%, ${(bundle.color || "#DFE104")}14, transparent 55%)` }}
             >
-              {/* top accent strip in the bundle's color */}
-              <span
-                className="absolute inset-x-0 top-0 h-0.5 rounded-t-xl"
-                style={{ backgroundColor: bundle.color || "#DFE104", boxShadow: `0 0 12px ${bundle.color || "#DFE104"}55` }}
-              />
 
               {/* Header: icon + quick actions */}
               <div className="flex items-start justify-between">

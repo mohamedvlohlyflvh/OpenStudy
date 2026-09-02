@@ -12,8 +12,7 @@ export interface RetentionPoint {
 /**
  * Build a retention curve. For each card, we know:
  *   - first review date (earliest reviewedAt in its log)
- *   - per-review quality (0=Again, 1=Hard, 2=Good, 3=Easy — but our schema
- *     uses q in 0..3 where ≥3 means "correct")
+ *   - per-review quality (schema uses q in 0..5 where >=3 means "correct")
  *
  * We bucket reviews by "days since this card's first review" using a
  * log-spaced set of buckets: [0, 1, 3, 7, 14, 30, 60, 90, 180].

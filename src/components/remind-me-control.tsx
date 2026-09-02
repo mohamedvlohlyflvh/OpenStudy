@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Bell, X } from "lucide-react";
 import { Button } from "./ui";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
@@ -23,7 +23,7 @@ export function RemindMeControl({ dueCount }: { dueCount: number }) {
   const { requestPermission, schedule, cancel } = useNotificationScheduler();
   const [open, setOpen] = useState(false);
   const [remindAt, setRemindAt] = useState<Date | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const [error, setError] = useState("");
 
   // Tick the countdown every second when armed
@@ -33,18 +33,25 @@ export function RemindMeControl({ dueCount }: { dueCount: number }) {
     return () => clearInterval(t);
   }, [remindAt]);
 
-  const arm = async (minutes: number) => {
-    setError("");
-    const perm = await requestPermission();
-    if (perm !== "granted") {
-      setError("NOTIFICATIONS BLOCKED — ENABLE IN BROWSER SETTINGS.");
-      return;
-    }
-    const when = new Date(Date.now() + minutes * 60 * 1000);
-    schedule(when, "Time to review", `${dueCount} card${dueCount === 1 ? "" : "s"} due in StudyMax.`);
-    setRemindAt(when);
-    setOpen(false);
-  };
+  // useCallback so react-hooks/purity treats this as an event-handler body,
+  // not render scope (Date.now() is legal here — it's a click handler).
+  const arm = useCallback(
+    async (minutes: number) => {
+      setError("");
+      const perm = await requestPermission();
+      if (perm !== "granted") {
+        setError("NOTIFICATIONS BLOCKED — ENABLE IN BROWSER SETTINGS.");
+        return;
+      }
+      const startedAt = Date.now();
+      setNow(startedAt); // seed the countdown before the first tick
+      const when = new Date(startedAt + minutes * 60 * 1000);
+      schedule(when, "Time to review", `${dueCount} card${dueCount === 1 ? "" : "s"} due in OpenStudy.`);
+      setRemindAt(when);
+      setOpen(false);
+    },
+    [requestPermission, schedule, dueCount]
+  );
 
   const cancel_ = () => {
     cancel();
@@ -56,7 +63,7 @@ export function RemindMeControl({ dueCount }: { dueCount: number }) {
     if (remaining <= 0) {
       // The notification already fired (or was throttled) — clear state
       return (
-        <div className="mt-2 flex items-center justify-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 py-1.5">
+        <div className="flex items-center justify-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 py-1.5">
           <Bell size={11} className="text-success" />
           <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-success">
             REMINDER SENT
@@ -73,7 +80,7 @@ export function RemindMeControl({ dueCount }: { dueCount: number }) {
       );
     }
     return (
-      <div className="mt-2 flex items-center justify-center gap-2 rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5">
+      <div className="flex items-center justify-center gap-2 rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5">
         <Bell size={11} className="text-accent" />
         <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-accent-fg">
           REMINDING IN {fmtCountdown(remaining)}
@@ -91,7 +98,7 @@ export function RemindMeControl({ dueCount }: { dueCount: number }) {
   }
 
   return (
-    <div className="mt-2 flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-center gap-1.5">
       {!open ? (
         <button
           type="button"

@@ -27,7 +27,7 @@ function LoaderBar({ label }: { label: string }) {
           <span className="animate-pulse">_</span>
         </p>
         <p className="font-mono text-xs uppercase tracking-widest text-muted-fg">
-          STUDYMAX
+          OPENSTUDY
         </p>
       </div>
       <div className="relative h-0.5 w-full overflow-hidden bg-border">
@@ -348,7 +348,7 @@ function KanbanBody() {
 }
 
 const LABELS: Record<LoaderVariant, string> = {
-  generic: "STUDYMAX",
+  generic: "OPENSTUDY",
   dashboard: "DASHBOARD",
   grid: "PAGE",
   grid4: "BUNDLES",

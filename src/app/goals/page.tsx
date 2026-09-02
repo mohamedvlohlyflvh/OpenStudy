@@ -74,11 +74,11 @@ const NEXT_STATUS: Partial<Record<GoalStatus, GoalStatus>> = {
 
 type HorizonFilter = "all" | GoalHorizon;
 
-function isOverdue(g: GoalRec): boolean {
+function isOverdue(g: GoalRec, nowMs: number): boolean {
   if (!g.dueDate || g.status === "done") return false;
   const due = new Date(g.dueDate);
   due.setHours(23, 59, 59, 999);
-  return due.getTime() < Date.now();
+  return due.getTime() < nowMs;
 }
 
 function formatDue(d: Date): string {
@@ -99,6 +99,8 @@ export default function GoalsPage() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<{ col: GoalStatus; index: number } | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // wall clock — captured once in the mount effect (react-hooks/purity bans Date.now() in render)
+  const [nowMs, setNowMs] = useState(0);
 
   const refresh = useCallback(async () => {
     const [g, m, s] = await Promise.all([getGoals(), getAllMilestones(), getSubjects()]);
@@ -121,6 +123,11 @@ export default function GoalsPage() {
     );
   }, []);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNowMs(Date.now());
+  }, []);
+
   // Derived — declared before any effect that reads them.
   const visible = useMemo(
     () => goals.filter((g) => filter === "all" || g.horizon === filter),
@@ -137,9 +144,9 @@ export default function GoalsPage() {
       total: goals.length,
       active: goals.filter((g) => g.status === "in_progress").length,
       done: goals.filter((g) => g.status === "done").length,
-      overdue: goals.filter(isOverdue).length,
+      overdue: goals.filter((g) => isOverdue(g, nowMs)).length,
     }),
-    [goals]
+    [goals, nowMs]
   );
 
   // ─── Drag & drop (desktop) ───────────────────────────────────────
@@ -322,7 +329,7 @@ export default function GoalsPage() {
                 {cards.map((g, i) => {
                   const ms = milestones.filter((m) => m.goalId === g.id);
                   const doneMs = ms.filter((m) => m.done).length;
-                  const overdue = isOverdue(g);
+                  const overdue = isOverdue(g, nowMs);
                   const subj = subjectOf(g.subjectId);
                   const expanded = expandedId === g.id;
                   return (

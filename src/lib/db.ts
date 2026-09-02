@@ -149,7 +149,7 @@ export interface MilestoneRec {
 // ─── The database ────────────────────────────────────────────────
 // Dexie/IndexedDB is the SINGLE source of truth — fully local,
 // fully offline, per-device. No server database anywhere.
-class StudyMaxDB extends Dexie {
+class OpenStudyDB extends Dexie {
   subjects!: Table<SubjectRec, string>;
   topics!: Table<TopicRec, string>;
   resources!: Table<ResourceRec, string>;
@@ -192,7 +192,7 @@ class StudyMaxDB extends Dexie {
   }
 }
 
-export const db = new StudyMaxDB();
+export const db = new OpenStudyDB();
 
 // Unique id generator (replaces Prisma cuid defaults)
 export function uid(): string {
@@ -224,11 +224,13 @@ export interface OfflineBundle {
   synced: boolean;
 }
 
-export async function cacheBundles(_bundles: OfflineBundle[]): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- no-op sink kept for the legacy offline-cache call sites
+export async function cacheBundles(_bundles?: OfflineBundle[]): Promise<void> {
   // no-op: bundles already live in the primary store
 }
 
-export async function cacheFlashcards(_cards: OfflineFlashcard[]): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- no-op sink kept for the legacy offline-cache call sites
+export async function cacheFlashcards(_cards?: OfflineFlashcard[]): Promise<void> {
   // no-op: flashcards already live in the primary store
 }
 

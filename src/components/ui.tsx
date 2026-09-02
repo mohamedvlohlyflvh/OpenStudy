@@ -11,7 +11,7 @@ import {
 import { createPortal } from "react-dom";
 
 /* ════════════════════════════════════════════════════════════════
-   STUDYMAX v2 UI PRIMITIVES — "Aurora Glass"
+   OPENSTUDY v2 UI PRIMITIVES — "Aurora Glass"
    Glass surfaces, generous radii, token-driven color only.
    ════════════════════════════════════════════════════════════════ */
 

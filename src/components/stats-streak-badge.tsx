@@ -35,7 +35,7 @@ export function StatsStreakBadge({
       )}
     >
       <Flame size={14} className="text-accent" />
-      <span className="font-mono text-xs font-bold uppercase tracking-widest text-accent-fg">
+      <span className="font-mono text-xs font-bold uppercase tracking-widest text-white">
         {streak} DAY STREAK
       </span>
     </div>

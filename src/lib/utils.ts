@@ -35,29 +35,5 @@ export function readableOn(hex: string): string {
   return contrastBlack >= contrastWhite ? "#09090b" : "#ffffff";
 }
 
-// SM-2 spaced repetition algorithm
-export function sm2(
-  quality: number, // 0-5
-  easeFactor: number,
-  intervalDays: number,
-  reviewCount: number
-): { easeFactor: number; intervalDays: number; nextReview: Date } {
-  let newEF = easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
-  if (newEF < 1.3) newEF = 1.3;
-
-  let newInterval: number;
-  if (quality < 3) {
-    newInterval = 1; // Reset on failure
-  } else if (reviewCount === 0) {
-    newInterval = 1;
-  } else if (reviewCount === 1) {
-    newInterval = 6;
-  } else {
-    newInterval = Math.round(intervalDays * newEF);
-  }
-
-  const nextReview = new Date();
-  nextReview.setDate(nextReview.getDate() + newInterval);
-
-  return { easeFactor: newEF, intervalDays: newInterval, nextReview };
-}
+// SM-2 lives only in reviewFlashcardWithLog (src/app/actions.ts) — the
+// duplicate here had drifted (no 365-day cap) and was never called.

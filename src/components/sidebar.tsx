@@ -60,9 +60,9 @@ export function Sidebar() {
       {/* Wordmark */}
       <div className="flex h-16 items-center justify-between border-b border-border px-4">
         {sidebarOpen && (
-          <Link href="/" aria-label="StudyMax home">
+          <Link href="/" aria-label="OpenStudy home">
             <span className="font-display text-xl font-bold tracking-tight text-fg">
-              Study<span className="text-accent">Max</span>
+              Open<span className="text-accent">Study</span>
             </span>
           </Link>
         )}

@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { buildRetentionCurve, type RetentionPoint } from "@/lib/stats";
+import { buildRetentionCurve } from "@/lib/stats";
 import type { ReviewLogRec } from "@/lib/db";
 import { motion } from "framer-motion";
 

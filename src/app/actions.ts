@@ -341,39 +341,9 @@ export async function updateFlashcard(
   return db.flashcards.get(id);
 }
 
-export async function reviewFlashcard(id: string, quality: number) {
-  const card = await db.flashcards.get(id);
-  if (!card) throw new Error("Flashcard not found");
-
-  // SM-2 algorithm
-  let newEF = card.easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
-  if (newEF < 1.3) newEF = 1.3;
-
-  let newInterval: number;
-  if (quality < 3) {
-    newInterval = 1;
-  } else if (card.reviewCount === 0) {
-    newInterval = 1;
-  } else if (card.reviewCount === 1) {
-    newInterval = 6;
-  } else {
-    newInterval = Math.min(Math.round(card.intervalDays * newEF), 365);
-  }
-
-  const nextReview = new Date();
-  nextReview.setDate(nextReview.getDate() + newInterval);
-
-  await db.flashcards.update(id, {
-    easeFactor: newEF,
-    intervalDays: newInterval,
-    nextReview,
-    lastReview: new Date(),
-    reviewCount: card.reviewCount + 1,
-    difficulty: quality,
-    updatedAt: new Date(),
-  });
-  return db.flashcards.get(id);
-}
+// (The legacy reviewFlashcard() was removed — it had drifted from
+// reviewFlashcardWithLog: no lapse reset, no leech tracking, no ReviewLog,
+// which corrupted scheduling and made reviews invisible to streaks/heatmaps.)
 
 // ─── Flashcard Management (MANAGE ALL) ──────────────────────────
 export async function getAllFlashcards() {
@@ -576,33 +546,8 @@ export async function getWeeklyAnalytics(): Promise<WeeklyAnalyticsResult> {
       if (idx >= 0 && idx < 7) minutes[idx] += s.durationMin;
     }
   }
-  const order = [...Array(7).keys()].map(
-    (i) => (todayIdx + 1 + i) % 7 // rotate so the array starts Monday
-  );
   // Build Monday-first labels aligned with index 0 = monday
   const weekDays = DAY_LABELS.map((label, i) => ({ label, minutes: minutes[i] }));
-
-  // Minutes reviewed today (for Daily Progress ring)
-  void order;
-
-  // Today's stats
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  const minutesToday = sessions
-    .filter((s) => new Date(s.startedAt) >= startOfDay)
-    .reduce((a, s) => a + s.durationMin, 0);
-
-  // Streak: consecutive days (ending today or yesterday) with ≥1 session
-  const dayKey = (d: Date) =>
-    `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  const activeDays = new Set(sessions.map((s) => dayKey(new Date(s.startedAt))));
-  let streakDays = 0;
-  const cursor = new Date(now);
-  if (!activeDays.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
-  while (activeDays.has(dayKey(cursor))) {
-    streakDays += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
 
   // Deadlines per subject (due cards + oldest overdue)
   const nowMs = Date.now();
@@ -1368,9 +1313,21 @@ export async function exportAllData(): Promise<string> {
 export async function importAllData(json: string): Promise<{ imported: string }> {
   const data = JSON.parse(json) as FullExport;
   if (!data.version || !data.subjects) throw new Error("Invalid backup file");
+  // Reject files from a NEWER schema version — importing a future v2 backup
+  // with v1 rules would silently drop fields the user expects to survive.
+  if (data.version > 1) {
+    throw new Error(
+      `Backup version ${data.version} is newer than this app supports (v1). Update the app first.`
+    );
+  }
 
   let imported = "";
 
+  // NOTE: not wrapped in db.transaction() — the import path re-enters the
+  // same IndexedDB tables through many small awaited helpers and Dexie
+  // disallows awaiting non-Dexie promises inside a transaction. A mid-import
+  // failure therefore leaves a partial import; the caller surfaces the error
+  // and can delete duplicates manually (each import re-runs with fresh ids).
   // Import subjects → topics → notes + flashcards
   for (const s of data.subjects) {
     const subject = await createSubject({
@@ -1496,8 +1453,9 @@ export async function bulkCreateFlashcards(
     back: c.back,
     difficulty: c.difficulty ?? 1,
     easeFactor: 2.5,
-    intervalDays: 1,
+    intervalDays: 0,
     nextReview: now,
+    lastReview: null,
     reviewCount: 0,
     consecutiveAgain: 0,
     isLeech: false,

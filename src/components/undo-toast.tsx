@@ -19,8 +19,16 @@ export type UndoAction = {
 // closure and could fire (or fail to cancel) across unmounts.
 
 let listeners: ((action: UndoAction) => void)[] = [];
+// Module-scope handle of the CURRENT toast's commit timer. showUndo clears it
+// when a new toast arrives, so a superseded deferred action can't commit late
+// and its timeout can't dismiss the replacement toast prematurely.
+let activeCommitTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function showUndo(action: UndoAction) {
+  if (activeCommitTimer !== null) {
+    clearTimeout(activeCommitTimer);
+    activeCommitTimer = null;
+  }
   listeners.forEach((l) => l(action));
 }
 
@@ -36,7 +44,8 @@ export function UndoToastHost() {
       const duration = action.duration ?? 5000;
 
       // Commit after the timeout, then clear.
-      const commitTimer = setTimeout(async () => {
+      activeCommitTimer = setTimeout(async () => {
+        activeCommitTimer = null;
         try {
           await action.onCommit?.();
         } finally {
@@ -49,7 +58,7 @@ export function UndoToastHost() {
       // Expose a cancel handle via the UNDO button (handled in render below).
       // We stash the timer so UNDO can clear it.
       (action as UndoAction & { __timer?: ReturnType<typeof setTimeout> }).__timer =
-        commitTimer;
+        activeCommitTimer;
     };
 
     listeners.push(onAction);
@@ -63,11 +72,19 @@ export function UndoToastHost() {
   const timer = (current as UndoAction & { __timer?: ReturnType<typeof setTimeout> }).__timer;
 
   const handleUndo = () => {
+    if (activeCommitTimer !== null) {
+      clearTimeout(activeCommitTimer);
+      activeCommitTimer = null;
+    }
     if (timer) clearTimeout(timer);
     Promise.resolve(current.undo()).finally(dismiss);
   };
 
   const handleDismiss = () => {
+    if (activeCommitTimer !== null) {
+      clearTimeout(activeCommitTimer);
+      activeCommitTimer = null;
+    }
     if (timer) clearTimeout(timer);
     dismiss();
   };

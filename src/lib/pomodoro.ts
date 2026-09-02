@@ -30,7 +30,7 @@ export const BUILTIN_PRESETS: (PomoConfig & { label: string })[] = [
   { label: "90/15", workMin: 90, breakMin: 15, longBreakMin: 30, cyclesBeforeLongBreak: 2, autoAdvance: true },
 ];
 
-const LS_KEY = "studymax.pomodoro.config";
+const LS_KEY = "openstudy.pomodoro.config";
 
 export function clampConfig(c: Partial<PomoConfig>): PomoConfig {
   const d = { ...DEFAULT_POMO_CONFIG, ...c };

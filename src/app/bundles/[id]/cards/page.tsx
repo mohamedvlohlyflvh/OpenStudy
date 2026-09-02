@@ -9,7 +9,6 @@ import {
   GalleryHorizontalEnd,
   Search,
   ArrowLeft,
-  Layers,
   Upload,
   Download,
 } from "lucide-react";
@@ -32,9 +31,9 @@ import type { BundleRec } from "@/lib/db";
 
 type CardStatus = { label: string; dot: string };
 
-function getCardStatus(card: { reviewCount: number; nextReview: Date | string }): CardStatus {
+function getCardStatus(card: { reviewCount: number; nextReview: Date | string }, nowMs: number): CardStatus {
   const rc = card.reviewCount;
-  const isDue = new Date(card.nextReview).getTime() <= Date.now();
+  const isDue = new Date(card.nextReview).getTime() <= nowMs;
   if (rc === 0) return { label: "NEW", dot: "bg-gray-400" };
   if (isDue) return { label: "DUE", dot: "bg-danger" };
   if (rc <= 3) return { label: "LEARNING", dot: "bg-warning" };
@@ -63,6 +62,8 @@ export default function BundleCardsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [cards, setCards] = useState<Card[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // wall clock — captured once in the mount effect (react-hooks/purity bans Date.now() in render)
+  const [nowMs, setNowMs] = useState(0);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTag, setFilterTag] = useState("all");
@@ -112,6 +113,11 @@ export default function BundleCardsPage() {
       active = false;
     };
   }, [load]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNowMs(Date.now());
+  }, []);
 
   // Distinct tag names across this bundle's cards
   const allTags = useMemo(() => {
@@ -369,7 +375,7 @@ export default function BundleCardsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredCards.map((card) => {
               const flipped = flippedIds.has(card.id);
-              const status = getCardStatus(card);
+              const status = getCardStatus(card, nowMs);
               const isSelected = selectedIds.has(card.id);
               return (
                 <div

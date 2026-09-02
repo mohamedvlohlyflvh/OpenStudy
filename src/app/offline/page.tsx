@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "Offline — StudyMax" };
+export const metadata = { title: "Offline — OpenStudy" };
 
 /* Static offline fallback served by the service worker when a page
    isn't cached yet. Themed via data-theme tokens, no JS needed. */

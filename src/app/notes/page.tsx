@@ -5,7 +5,7 @@ import { Plus, Trash2, Pin, StickyNote, Pencil } from "lucide-react";
 import { Card, Button, Modal, Input, EmptyState, Skeleton, Textarea } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
-import { getAllNotes, getSubjects, createNote, deleteNote, updateNote, exportNotesMarkdown, getBundles } from "@/app/actions";
+import { getAllNotes, getSubjects, createNote, deleteNote, updateNote, getBundles } from "@/app/actions";
 import { SubjectTopicSelect } from "@/components/subject-topic-select";
 import { TagInput } from "@/components/tag-input";
 import { Markdown } from "@/components/markdown";

@@ -11,14 +11,20 @@ function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function renderInline(text: string): string {
   let s = escapeHtml(text);
-  // images ![alt](url) — must come before links to avoid false matches
+  // images ![alt](url) — must come before links to avoid false matches.
+  // Only http(s), site-relative, and data:image URLs are rendered; anything
+  // else stays as literal (escaped) text. Combined with quote escaping in
+  // escapeHtml, this closes the attribute-breakout XSS vector via card
+  // content (front/back come from imports and pasted LLM output).
   s = s.replace(
-    /!\[([^\]]*)\]\(([^\s)]+)\)/g,
+    /!\[([^\]]*)\]\((https?:\/\/[^\s)]+|\/[^\s)]*|\.\.?\/[^\s)]*|data:image\/[^\s)]+)\)/gi,
     '<img src="$2" alt="$1" class="md-img" style="max-width:100%;height:auto;border-radius:4px;" />'
   );
   // inline code

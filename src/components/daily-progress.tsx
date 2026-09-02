@@ -6,7 +6,6 @@
 
 import { useEffect, useRef } from "react";
 import { Flame, Layers, Timer } from "lucide-react";
-import { CountUp } from "@/components/count-up";
 
 export interface DailyProgressData {
   cardsReviewed: number;
@@ -23,13 +22,12 @@ const RING = [
 ] as const;
 
 function Ring({
-  pct,
   color,
   size,
   stroke,
   circleRef,
 }: {
-  pct: number;
+  pct?: number;
   color: string;
   size: number;
   stroke: number;
@@ -119,8 +117,6 @@ export function DailyProgress({ data }: { data: DailyProgressData }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.cardsReviewed, data.minutesToday, data.streakDays]);
-
-  const size = 140;
 
   return (
     <div className="glass flex items-center gap-6 rounded-3xl p-6" role="img"

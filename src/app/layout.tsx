@@ -8,7 +8,7 @@ import { SwRegister } from "@/components/sw-register";
 import { PageTransition } from "@/components/page-transition";
 
 export const metadata: Metadata = {
-  title: "StudyMax — Learn Smarter",
+  title: "OpenStudy — Learn Smarter",
   description: "Full-stack study management with spaced repetition, notes, and progress tracking.",
   manifest: "/manifest.webmanifest",
   icons: {

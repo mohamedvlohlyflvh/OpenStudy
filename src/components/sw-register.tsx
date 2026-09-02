@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-/* Registers the StudyMax service worker after hydration.
+/* Registers the OpenStudy service worker after hydration.
    Production only — dev SW caching breaks HMR. */
 export function SwRegister() {
   useEffect(() => {

@@ -81,7 +81,7 @@ export default function SettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `studymax-backup-${new Date().toISOString().split("T")[0]}.json`;
+      a.download = `openstudy-backup-${new Date().toISOString().split("T")[0]}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -193,7 +193,7 @@ export default function SettingsPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold uppercase tracking-tight text-fg">IMPORT DATA</p>
-                <p className="mt-1 text-xs text-muted-fg uppercase tracking-widest">RESTORE FROM A STUDYMAX BACKUP FILE</p>
+                <p className="mt-1 text-xs text-muted-fg uppercase tracking-widest">RESTORE FROM A OPENSTUDY BACKUP FILE</p>
               </div>
               <Button size="sm" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={importStatus === "importing"}>
                 <Upload size={14} />
