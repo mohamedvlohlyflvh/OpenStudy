@@ -293,6 +293,7 @@ export async function createFlashcard(data: {
   subjectId?: string;
   front: string;
   back: string;
+  description?: string | null;
   difficulty?: number;
 }) {
   const parsed = z.object({
@@ -300,6 +301,7 @@ export async function createFlashcard(data: {
     subjectId: z.string().min(1).optional(),
     front: z.string().min(1).max(2000),
     back: z.string().min(1).max(5000),
+    description: z.string().max(2000).nullish(),
     difficulty: z.number().int().min(1).max(5).optional(),
   }).parse(data);
   const now = new Date();
@@ -310,6 +312,7 @@ export async function createFlashcard(data: {
     bundleId: null,
     front: parsed.front,
     back: parsed.back,
+    description: parsed.description ?? null,
     difficulty: parsed.difficulty ?? 1,
     easeFactor: 2.5,
     intervalDays: 0,
@@ -327,12 +330,13 @@ export async function createFlashcard(data: {
 
 export async function updateFlashcard(
   id: string,
-  data: { front?: string; back?: string; topicId?: string; tags?: string[] }
+  data: { front?: string; back?: string; topicId?: string; tags?: string[]; description?: string | null }
 ) {
   const parsed = z.object({
     front: z.string().min(1).max(2000).optional(),
     back: z.string().min(1).max(5000).optional(),
     topicId: z.string().min(1).optional(),
+    description: z.string().max(2000).nullish(),
     tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   }).parse(data);
   const { tags, ...rest } = parsed;
@@ -843,6 +847,7 @@ export async function createBundleFlashcard(data: {
   bundleId: string;
   front: string;
   back: string;
+  description?: string | null;
   tags?: string[];
 }) {
   const parsed = bundleCardSchema.parse(data);
@@ -855,6 +860,7 @@ export async function createBundleFlashcard(data: {
     bundleId: rest.bundleId,
     front: rest.front,
     back: rest.back,
+    description: rest.description ?? null,
     difficulty: 1,
     easeFactor: 2.5,
     intervalDays: 0,
@@ -874,10 +880,10 @@ export async function createBundleFlashcard(data: {
 // ─── Import a batch of cards (parsed from CSV/Anki/JSON) ──────
 export async function importCardsIntoBundle(
   bundleId: string,
-  cards: { front: string; back: string; tags?: string[] }[]
+  cards: { front: string; back: string; tags?: string[]; description?: string }[]
 ) {
   const parsed = importBatchSchema.parse(
-    (cards ?? []).map((c) => ({ front: c.front, back: c.back, tags: c.tags }))
+    (cards ?? []).map((c) => ({ front: c.front, back: c.back, tags: c.tags, description: c.description }))
   );
 
   const now = new Date();
@@ -888,6 +894,7 @@ export async function importCardsIntoBundle(
     bundleId,
     front: c.front,
     back: c.back,
+    description: c.description ?? null,
     difficulty: 1,
     easeFactor: 2.5,
     intervalDays: 0,
@@ -919,7 +926,7 @@ export type ExportBundle = {
   name: string;
   description?: string | null;
   color?: string;
-  cards: { front: string; back: string }[];
+  cards: { front: string; back: string; description?: string | null }[];
 };
 
 export async function exportBundle(bundleId: string) {
@@ -930,14 +937,27 @@ export async function exportBundle(bundleId: string) {
     name: bundle.name,
     description: bundle.description,
     color: bundle.color,
-    cards: cards.map((c) => ({ front: c.front, back: c.back })),
+    cards: cards.map((c) => ({
+      front: c.front,
+      back: c.back,
+      // Omit when absent so exports of description-less cards stay byte-identical.
+      ...(c.description ? { description: c.description } : {}),
+    })),
   };
   return JSON.stringify(payload, null, 2);
 }
 
 export async function importBundleCards(
   bundleId: string,
-  cards: { front?: string; back?: string; question?: string; answer?: string; tags?: string[] }[]
+  cards: {
+    front?: string;
+    back?: string;
+    question?: string;
+    answer?: string;
+    description?: string;
+    desc?: string;
+    tags?: string[];
+  }[]
 ) {
   if (!Array.isArray(cards) || cards.length === 0) return { count: 0 };
   // Accept both {front,back} (app export) and {question,answer} (external JSON).
@@ -945,6 +965,7 @@ export async function importBundleCards(
     .map((c) => ({
       front: String(c.front ?? c.question ?? "").trim(),
       back: String(c.back ?? c.answer ?? "").trim(),
+      description: String(c.description ?? c.desc ?? "").trim() || undefined,
       tags: Array.isArray(c.tags)
         ? c.tags.map((t) => String(t).trim()).filter(Boolean)
         : undefined,
@@ -969,6 +990,7 @@ export async function exportBundleMarkdown(bundleId: string): Promise<string> {
   } else {
     cards.forEach((c, i) => {
       lines.push(`## ${i + 1}. ${c.front}`);
+      if (c.description) lines.push(`\n> ${c.description.replace(/\s*\n+\s*/g, " ")}`);
       lines.push(`\n${c.back}\n`);
     });
   }
@@ -1451,6 +1473,7 @@ export async function bulkCreateFlashcards(
     bundleId,
     front: c.front,
     back: c.back,
+    description: c.description ?? null,
     difficulty: c.difficulty ?? 1,
     easeFactor: 2.5,
     intervalDays: 0,

@@ -56,3 +56,6 @@ next-env.d.ts
 _e2e/screenshots-v2/
 _e2e/montages-v2/
 _e2e/audit-v2.json
+
+# AutoClaw/ZCode scratch
+.openclaw/

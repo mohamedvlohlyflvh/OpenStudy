@@ -159,12 +159,14 @@ function FlashcardsContent() {
   const [selectedTopicId, setSelectedTopicId] = useState("");
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
+  const [desc, setDesc] = useState("");
   const [creating, setCreating] = useState(false);
 
   // ─── Edit/Delete modal ──────────────────────────────────────
   const [editCard, setEditCard] = useState<ManagedFlashcard | null>(null);
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
+  const [editDesc, setEditDesc] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ManagedFlashcard | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -433,13 +435,14 @@ function FlashcardsContent() {
     setCreating(true);
     try {
       if (selectedBundle) {
-        await createBundleFlashcard({ bundleId: selectedBundle, front: front.trim(), back: back.trim() });
+        await createBundleFlashcard({ bundleId: selectedBundle, front: front.trim(), back: back.trim(), description: desc.trim() || undefined });
       } else if (selectedTopicId) {
-        await createFlashcard({ topicId: selectedTopicId, front: front.trim(), back: back.trim() });
+        await createFlashcard({ topicId: selectedTopicId, front: front.trim(), back: back.trim(), description: desc.trim() || undefined });
       }
       setModalOpen(false);
       setFront("");
       setBack("");
+      setDesc("");
       setSelectedTopicId("");
       await loadDueCards();
     } finally {
@@ -451,12 +454,19 @@ function FlashcardsContent() {
     if (!editCard || !editFront.trim() || !editBack.trim()) return;
     setSaving(true);
     try {
-      await updateFlashcard(editCard.id, { front: editFront.trim(), back: editBack.trim() });
+      await updateFlashcard(editCard.id, { front: editFront.trim(), back: editBack.trim(), description: editDesc.trim() || null });
       setEditCard(null);
     } finally {
       setSaving(false);
     }
   };
+
+  // Prefill the edit description whenever a card is loaded into the edit
+  // modal (the modal opens when editCard is set).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (editCard) setEditDesc(editCard.description ?? "");
+  }, [editCard]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -1279,6 +1289,12 @@ function FlashcardsContent() {
               onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleCreate(); }}
             />
           </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">DESCRIPTION (OPTIONAL)</label>
+            <Input placeholder="OPTIONAL HINT OR CONTEXT SHOWN WITH THE CARD" value={desc} onChange={(e) => setDesc(e.target.value)}
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleCreate(); }}
+            />
+          </div>
           <p className="text-[10px] text-muted-fg uppercase tracking-widest">⌘/CTRL + ENTER TO SAVE</p>
           <div className="flex justify-end gap-4 pt-4">
             <Button variant="ghost" onClick={() => setModalOpen(false)}>CANCEL</Button>
@@ -1306,6 +1322,10 @@ function FlashcardsContent() {
                 <ImageUploadButton onImage={(md) => setEditBack((prev) => prev ? `${prev} ${md}` : md)} label="IMAGE" />
               </div>
               <Input value={editBack} onChange={(e) => setEditBack(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">DESCRIPTION (OPTIONAL)</label>
+              <Input placeholder="OPTIONAL HINT OR CONTEXT SHOWN WITH THE CARD" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
             </div>
             <div className="flex justify-end gap-4 pt-4">
               <Button variant="ghost" onClick={() => setEditCard(null)}>CANCEL</Button>

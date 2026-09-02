@@ -3,13 +3,14 @@ import { z } from "zod";
 /**
  * JSON shape we accept when importing flashcards from an external LLM
  * (NotebookLM, ChatGPT, Gemini, hand-typed, ...). Two top-level shapes:
- *   - Bare array:  [{ front, back, tags?, difficulty? }, ...]
+ *   - Bare array:  [{ front, back, tags?, description?, difficulty? }, ...]
  *   - Wrapped:     { cards: [{ front, back, ... }] }
  * Both go through `parseAiCardsInput` which normalises to the array form.
  */
 export const AiCardInput = z.object({
   front: z.string().min(1).max(2000),
   back: z.string().min(1).max(8000),
+  description: z.string().max(2000).optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   difficulty: z.number().int().min(1).max(5).optional(),
 });

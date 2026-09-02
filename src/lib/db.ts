@@ -74,6 +74,7 @@ export interface FlashcardRec {
   bundleId?: string | null;
   front: string;
   back: string;
+  description?: string | null;
   difficulty: number;
   easeFactor: number;
   intervalDays: number;

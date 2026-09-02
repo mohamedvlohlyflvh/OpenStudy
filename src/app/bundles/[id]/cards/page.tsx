@@ -46,6 +46,7 @@ type Card = {
   id: string;
   front: string;
   back: string;
+  description?: string | null;
   reviewCount: number;
   nextReview: Date | string;
   tags: CardTag[];
@@ -73,6 +74,7 @@ export default function BundleCardsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
+  const [desc, setDesc] = useState("");
   const [createTags, setCreateTags] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -80,6 +82,7 @@ export default function BundleCardsPage() {
   const [editCard, setEditCard] = useState<Card | null>(null);
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
+  const [editDesc, setEditDesc] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Card | null>(null);
@@ -156,11 +159,13 @@ export default function BundleCardsPage() {
         bundleId,
         front: front.trim(),
         back: back.trim(),
+        description: desc.trim() || undefined,
         tags: createTags.length ? createTags : undefined,
       });
       setCreateOpen(false);
       setFront("");
       setBack("");
+      setDesc("");
       setCreateTags([]);
       setLoaded(false);
       await load();
@@ -176,6 +181,7 @@ export default function BundleCardsPage() {
       await updateFlashcard(editCard.id, {
         front: editFront.trim(),
         back: editBack.trim(),
+        description: editDesc.trim() || null,
         tags: editTags,
       });
       setEditCard(null);
@@ -419,6 +425,7 @@ export default function BundleCardsPage() {
                           setEditCard(card);
                           setEditFront(card.front);
                           setEditBack(card.back);
+                          setEditDesc(card.description ?? "");
                           setEditTags(card.tags.map((t) => t.tag.name));
                         }}
                         aria-label="Edit"
@@ -451,6 +458,16 @@ export default function BundleCardsPage() {
                       <p className="text-lg font-bold uppercase tracking-tight leading-relaxed">
                         {flipped ? card.back : card.front}
                       </p>
+                      {card.description && (
+                        <p
+                          className={cn(
+                            "mt-2 text-xs leading-relaxed tracking-tight",
+                            flipped ? "text-accent-fg/70" : "text-muted-fg"
+                          )}
+                        >
+                          {card.description}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {card.tags.length > 0 && (
@@ -497,6 +514,12 @@ export default function BundleCardsPage() {
             value={back}
             onChange={(e) => setBack(e.target.value)}
           />
+          <Input
+            label="DESCRIPTION (OPTIONAL)"
+            placeholder="OPTIONAL HINT OR CONTEXT SHOWN WITH THE CARD"
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+          />
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">
               TAGS
@@ -530,6 +553,12 @@ export default function BundleCardsPage() {
               label="ANSWER (BACK)"
               value={editBack}
               onChange={(e) => setEditBack(e.target.value)}
+            />
+            <Input
+              label="DESCRIPTION (OPTIONAL)"
+              placeholder="OPTIONAL HINT OR CONTEXT SHOWN WITH THE CARD"
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
             />
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">

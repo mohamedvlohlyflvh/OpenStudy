@@ -88,6 +88,7 @@ export const bundleCardSchema = z.object({
   bundleId: z.string().min(1),
   front: z.string().min(1, "Front side is required").max(2000),
   back: z.string().min(1, "Back side is required").max(5000),
+  description: z.string().max(2000).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
 });
 
@@ -109,6 +110,7 @@ export type PomoPresetInput = z.infer<typeof pomoPresetSchema>;
 export const importRowSchema = z.object({
   front: z.string().min(1).max(2000),
   back: z.string().min(1).max(5000),
+  description: z.string().max(2000).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
 });
 
