@@ -15,7 +15,17 @@ import { soundscape, type SoundscapeName } from "@/lib/soundscape";
 import { RemindMeControl } from "./remind-me-control";
 import type { PomoPresetRec } from "@/lib/db";
 
-const SOUNDSCAPES: SoundscapeName[] = ["Silence", "Rain", "Café", "Waves"];
+const SOUNDSCAPES: SoundscapeName[] = [
+  "Silence",
+  "White",
+  "Brown",
+  "Pink",
+  "Rain",
+  "Café",
+  "Waves",
+  "Fire",
+  "Wind",
+];
 
 const PHASE_META = {
   work: {

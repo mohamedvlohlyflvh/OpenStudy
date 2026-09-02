@@ -3,13 +3,27 @@
 // ─── Soundscape engine — procedural ambient audio via Web Audio ────
 // No audio files, no network: everything is synthesized live from
 // filtered noise buffers (keeps the app fully offline / PWA-safe).
-//   Rain  — white noise lowpassed + random high droplet blips
-//   Café  — brown-noise room rumble + bandpassed murmur + cup clinks
-//   Waves — brown noise with slow LFO swells
+//   White   — flat-spectrum noise (masks distractions, boosts focus)
+//   Brown   — deep low-end rumble (calming, great for deep work)
+//   Pink    — 1/f noise, most "natural"-sounding (rain-on-leaves-ish)
+//   Rain    — white noise lowpassed + random high droplet blips
+//   Café    — brown-noise room rumble + bandpassed murmur + cup clinks
+//   Waves   — brown noise with slow LFO swells
+//   Fire    — pink-noise crackle bed + low brown rumble + pops
+//   Wind    — pink noise with slow LFO gusts + bandpass sweeps
 // The engine is a singleton; AudioContext is created lazily inside a
 // user gesture (the select's change event) to satisfy autoplay policy.
 
-export type SoundscapeName = "Silence" | "Rain" | "Café" | "Waves";
+export type SoundscapeName =
+  | "Silence"
+  | "White"
+  | "Brown"
+  | "Pink"
+  | "Rain"
+  | "Café"
+  | "Waves"
+  | "Fire"
+  | "Wind";
 
 type Stoppable = { stop: () => void };
 
@@ -20,6 +34,7 @@ class SoundscapeEngine {
   private stoppables: Stoppable[] = [];
   private whiteBuf: AudioBuffer | null = null;
   private brownBuf: AudioBuffer | null = null;
+  private pinkBuf: AudioBuffer | null = null;
   currentName: SoundscapeName = "Silence";
 
   private ensureCtx(): AudioContext {
@@ -34,14 +49,14 @@ class SoundscapeEngine {
     return this.ctx;
   }
 
-  private noiseBuffer(kind: "white" | "brown"): AudioBuffer {
+  private noiseBuffer(kind: "white" | "brown" | "pink"): AudioBuffer {
     const ctx = this.ensureCtx();
     const len = ctx.sampleRate * 2;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
     if (kind === "white") {
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    } else {
+    } else if (kind === "brown") {
       // Paul Kellet's brown-noise approximation
       let last = 0;
       for (let i = 0; i < len; i++) {
@@ -49,16 +64,32 @@ class SoundscapeEngine {
         last = (last + 0.02 * white) / 1.02;
         data[i] = last * 3.5;
       }
+    } else {
+      // Voss-McCartney pink noise (1/f spectrum) — most natural-sounding
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < len; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+        b6 = white * 0.115926;
+      }
     }
     return buf;
   }
 
-  private loopNoise(kind: "white" | "brown"): AudioBufferSourceNode {
+  private loopNoise(kind: "white" | "brown" | "pink"): AudioBufferSourceNode {
     const ctx = this.ensureCtx();
     if (kind === "white" && !this.whiteBuf) this.whiteBuf = this.noiseBuffer("white");
     if (kind === "brown" && !this.brownBuf) this.brownBuf = this.noiseBuffer("brown");
+    if (kind === "pink" && !this.pinkBuf) this.pinkBuf = this.noiseBuffer("pink");
     const src = ctx.createBufferSource();
-    src.buffer = kind === "white" ? this.whiteBuf! : this.brownBuf!;
+    src.buffer =
+      kind === "white" ? this.whiteBuf! : kind === "brown" ? this.brownBuf! : this.pinkBuf!;
     src.loop = true;
     this.stoppables.push(src);
     return src;
@@ -85,6 +116,96 @@ class SoundscapeEngine {
   }
 
   // ─── Sound recipes ────────────────────────────────────────────────
+
+  private buildWhite(master: GainNode) {
+    // Pure flat-spectrum white noise — tames a noisy environment
+    const src = this.loopNoise("white");
+    const g = this.gain(0.18);
+    src.connect(g).connect(master);
+    src.start();
+  }
+
+  private buildBrown(master: GainNode) {
+    // Deep brown noise — low rumble, calming
+    const src = this.loopNoise("brown");
+    const lp = this.filter("lowpass", 800, 0.5);
+    const hp = this.filter("highpass", 30, 0.5); // kill DC drift
+    const g = this.gain(0.55);
+    src.connect(lp).connect(hp).connect(g).connect(master);
+    src.start();
+  }
+
+  private buildPink(master: GainNode) {
+    // Pink noise — 1/f, most natural for masking
+    const src = this.loopNoise("pink");
+    const g = this.gain(0.42);
+    src.connect(g).connect(master);
+    src.start();
+  }
+
+  private buildFire(master: GainNode) {
+    const ctx = this.ensureCtx();
+    // Hiss bed — pink noise bandpassed
+    const hiss = this.loopNoise("pink");
+    const bp = this.filter("bandpass", 1200, 0.8);
+    const hissGain = this.gain(0.18);
+    hiss.connect(bp).connect(hissGain).connect(master);
+    hiss.start();
+
+    // Low brown rumble for the body of the fire
+    const rumble = this.loopNoise("brown");
+    const lp = this.filter("lowpass", 250, 0.5);
+    const rG = this.gain(0.3);
+    rumble.connect(lp).connect(rG).connect(master);
+    rumble.start();
+
+    // Random pops — short high-frequency bursts
+    const pop = () => {
+      const t = ctx.currentTime;
+      const ns = ctx.createBufferSource();
+      ns.buffer = this.pinkBuf!;
+      const popBp = this.filter("bandpass", 3000 + Math.random() * 2000, 6);
+      const pg = ctx.createGain();
+      pg.gain.setValueAtTime(0.0001, t);
+      pg.gain.exponentialRampToValueAtTime(0.04 + Math.random() * 0.06, t + 0.003);
+      pg.gain.exponentialRampToValueAtTime(0.0001, t + 0.04 + Math.random() * 0.05);
+      ns.connect(popBp).connect(pg).connect(master);
+      ns.start(t);
+      ns.stop(t + 0.12);
+    };
+    this.timers.push(
+      window.setInterval(() => {
+        if (Math.random() < 0.5) pop();
+      }, 700)
+    );
+  }
+
+  private buildWind(master: GainNode) {
+    const ctx = this.ensureCtx();
+    // Pink noise gusts — slow LFO on a bandpass + a deeper LFO on the gain
+    const src = this.loopNoise("pink");
+    const bp = this.filter("bandpass", 700, 1.2);
+    const g = this.gain(0.3);
+
+    const lfo1 = ctx.createOscillator();
+    lfo1.type = "sine";
+    lfo1.frequency.value = 0.13;
+    const d1 = this.gain(220);
+    lfo1.connect(d1).connect(bp.frequency);
+    lfo1.start();
+    this.stoppables.push(lfo1);
+
+    const lfo2 = ctx.createOscillator();
+    lfo2.type = "sine";
+    lfo2.frequency.value = 0.08;
+    const d2 = this.gain(0.18);
+    lfo2.connect(d2).connect(g.gain);
+    lfo2.start();
+    this.stoppables.push(lfo2);
+
+    src.connect(bp).connect(g).connect(master);
+    src.start();
+  }
 
   private buildRain(master: GainNode) {
     const ctx = this.ensureCtx();
@@ -201,9 +322,14 @@ class SoundscapeEngine {
     master.connect(ctx.destination);
     this.master = master;
 
-    if (name === "Rain") this.buildRain(master);
+    if (name === "White") this.buildWhite(master);
+    else if (name === "Brown") this.buildBrown(master);
+    else if (name === "Pink") this.buildPink(master);
+    else if (name === "Fire") this.buildFire(master);
+    else if (name === "Wind") this.buildWind(master);
+    else if (name === "Rain") this.buildRain(master);
     else if (name === "Café") this.buildCafe(master);
-    else this.buildWaves(master);
+    else if (name === "Waves") this.buildWaves(master);
 
     // Fade in — no click
     master.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 0.8);
