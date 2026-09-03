@@ -59,6 +59,7 @@ export default function BundleCardsPage() {
 
   const [bundleName, setBundleName] = useState<string>("");
   const [bundleColor, setBundleColor] = useState<string>("#DFE104");
+  const [bundleTopicLabel, setBundleTopicLabel] = useState<string | null>(null);
   const [allBundles, setAllBundles] = useState<BundleRec[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [cards, setCards] = useState<Card[]>([]);
@@ -102,6 +103,9 @@ export default function BundleCardsPage() {
     if (b) {
       setBundleName(b.name);
       setBundleColor(b.color || "#DFE104");
+      const t = (b as unknown as { topic?: { name: string; subject?: { name: string } | null } | null }).topic;
+      if (t) setBundleTopicLabel(`${t.subject?.name ? `${t.subject.name} › ` : ""}${t.name}`);
+      else setBundleTopicLabel(null);
     }
     setLoaded(true);
   }, [bundleId]);
@@ -247,13 +251,18 @@ export default function BundleCardsPage() {
                   style={{ backgroundColor: bundleColor }}
                 />
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-fg">
-                  Manage cards
+                  {bundleTopicLabel ? bundleTopicLabel : "Manage cards"}
                 </p>
               </div>
               <RevealHeading
                 text={bundleName || "BUNDLE"}
                 className="text-2xl font-bold uppercase tracking-tight text-fg"
               />
+              {bundleTopicLabel && (
+                <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-muted-fg">
+                  TOPIC: {bundleTopicLabel}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">

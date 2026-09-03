@@ -1,19 +1,36 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { Plus, Trash2, BookOpen, Pencil } from "lucide-react";
+import { Plus, Trash2, BookOpen, Pencil, Layers, FileText, ExternalLink, Link2, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Card, Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
-import { getSubjects, createSubject, deleteSubject, createTopic, getTopics, updateTopic, deleteTopic, updateSubject } from "@/app/actions";
+import {
+  getSubjects,
+  createSubject,
+  deleteSubject,
+  createTopic,
+  getTopics,
+  updateTopic,
+  deleteTopic,
+  updateSubject,
+  getBundles,
+  getBundlesByTopic,
+  createBundleFromTopic,
+  linkBundleToTopic,
+} from "@/app/actions";
+import { db } from "@/lib/db";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { SubjectIconPicker, SUBJECT_ICONS } from "@/components/subject-icon-picker";
 import { readableOn } from "@/lib/utils";
 import { tiltHandlers } from "@/lib/interactions";
 
 type Subject = Awaited<ReturnType<typeof getSubjects>>[number];
+type Bundle = Awaited<ReturnType<typeof getBundles>>[number];
 
 export default function SubjectsPage() {
+  const router = useRouter();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -33,22 +50,52 @@ export default function SubjectsPage() {
   // Topic management modal state
   const [manageTopicsFor, setManageTopicsFor] = useState<string | null>(null);
   const [manageSubjectsName, setManageSubjectsName] = useState("");
+  const [manageSubjectColor, setManageSubjectColor] = useState("#DFE104");
   const [managedTopics, setManagedTopics] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [topicLoaded, setTopicLoaded] = useState(false);
   const [newTopicName, setNewTopicName] = useState("");
   const [editTopicId, setEditTopicId] = useState<string | null>(null);
   const [editTopicName, setEditTopicName] = useState("");
   const [deleteTopicId, setDeleteTopicId] = useState<string | null>(null);
+  const [topicSearch, setTopicSearch] = useState("");
+
+  // Per-topic stats: notes / cards / linked bundles
+  const [topicStats, setTopicStats] = useState<Record<string, { notes: number; cards: number; bundles: Bundle[] }>>({});
+  const [allBundles, setAllBundles] = useState<Bundle[]>([]);
+  const [linkTopicId, setLinkTopicId] = useState<string | null>(null);
+  const [linkBundleId, setLinkBundleId] = useState("");
+
+  const [topicCounts, setTopicCounts] = useState<Record<string, number>>({});
+
+  const refreshTopicStats = async (subjectId: string, topicIds: string[]) => {
+    const [bundles] = await Promise.all([getBundles()]);
+    setAllBundles(bundles as Bundle[]);
+    const stats: Record<string, { notes: number; cards: number; bundles: Bundle[] }> = {};
+    for (const tid of topicIds) {
+      const [notes, cards, linked] = await Promise.all([
+        db.notes.where("topicId").equals(tid).count(),
+        db.flashcards.where("topicId").equals(tid).count(),
+        getBundlesByTopic(tid),
+      ]);
+      stats[tid] = { notes, cards, bundles: linked as Bundle[] };
+    }
+    setTopicStats(stats);
+  };
 
   const openManageTopics = async (subjectId: string, subjectName: string) => {
+    const subj = subjects.find((s) => s.id === subjectId);
     setManageTopicsFor(subjectId);
     setManageSubjectsName(subjectName);
+    setManageSubjectColor(subj?.color || "#DFE104");
     setTopicLoaded(false);
     setNewTopicName("");
     setEditTopicId(null);
+    setTopicSearch("");
+    setLinkTopicId(null);
     const t = await getTopics(subjectId);
     setManagedTopics(t.map((x) => ({ id: x.id, name: x.name, description: x.description ?? null })));
     setTopicLoaded(true);
+    await refreshTopicStats(subjectId, t.map((x) => x.id));
   };
 
   const handleAddTopic = () => {
@@ -63,6 +110,7 @@ export default function SubjectsPage() {
         ...prev,
         [manageTopicsFor]: (prev[manageTopicsFor] ?? 0) + 1,
       }));
+      await refreshTopicStats(manageTopicsFor, t2.map((x) => x.id));
     });
   };
 
@@ -88,10 +136,32 @@ export default function SubjectsPage() {
         [manageTopicsFor]: Math.max(0, (prev[manageTopicsFor] ?? 1) - 1),
       }));
       setDeleteTopicId(null);
+      await refreshTopicStats(manageTopicsFor, t2.map((x) => x.id));
     });
   };
 
-  const [topicCounts, setTopicCounts] = useState<Record<string, number>>({});
+  const handleCreateBundleFromTopic = (topicId: string) => {
+    if (!manageTopicsFor) return;
+    startTransition(async () => {
+      const b = await createBundleFromTopic(topicId);
+      await refreshTopicStats(manageTopicsFor, managedTopics.map((x) => x.id));
+      // quick nav hint: stay here but allow jump
+      setTopicStats((prev) => ({
+        ...prev,
+        [topicId]: { ...prev[topicId], bundles: [...(prev[topicId]?.bundles ?? []), b as Bundle] },
+      }));
+    });
+  };
+
+  const handleLinkBundle = () => {
+    if (!linkTopicId || !linkBundleId) return;
+    startTransition(async () => {
+      await linkBundleToTopic(linkBundleId, linkTopicId);
+      setLinkTopicId(null);
+      setLinkBundleId("");
+      if (manageTopicsFor) await refreshTopicStats(manageTopicsFor, managedTopics.map((x) => x.id));
+    });
+  };
 
   useEffect(() => {
     getSubjects().then((s) => {
@@ -118,6 +188,7 @@ export default function SubjectsPage() {
         setEditSubject(null);
         setManageTopicsFor(null);
         setDeleteTopicId(null);
+        setLinkTopicId(null);
       }
     };
     window.addEventListener("keydown", handler);
@@ -172,6 +243,10 @@ export default function SubjectsPage() {
       setEditSubject(null);
     });
   };
+
+  const filteredTopics = managedTopics.filter((t) =>
+    !topicSearch.trim() ? true : t.name.toLowerCase().includes(topicSearch.toLowerCase())
+  );
 
   return (
     <div className="p-8 lg:p-12">
@@ -301,7 +376,7 @@ export default function SubjectsPage() {
         </div>
       )}
 
-      {/* Topic Management Modal */}
+      {/* Topic Management Modal — now USABLE */}
       <Modal
         open={!!manageTopicsFor}
         onClose={() => setManageTopicsFor(null)}
@@ -326,73 +401,194 @@ export default function SubjectsPage() {
             </Button>
           </div>
 
+          {/* Search topics */}
+          {managedTopics.length > 3 && (
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-fg" />
+              <input
+                placeholder="SEARCH TOPICS..."
+                value={topicSearch}
+                onChange={(e) => setTopicSearch(e.target.value)}
+                className="h-9 w-full border border-border bg-bg pl-8 pr-3 text-xs font-bold uppercase tracking-widest placeholder:text-muted-fg/60 focus:outline-none focus:border-accent"
+              />
+            </div>
+          )}
+
           {/* List */}
           {!topicLoaded ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <Skeleton key={i} className="h-24 w-full" />
               ))}
             </div>
           ) : managedTopics.length === 0 ? (
             <EmptyState
               icon={<BookOpen size={40} />}
               title="NO TOPICS YET"
-              description="ADD YOUR FIRST TOPIC ABOVE."
+              description="ADD YOUR FIRST TOPIC ABOVE — THEN CREATE A BUNDLE FOR IT TO START MAKING CARDS."
             />
+          ) : filteredTopics.length === 0 ? (
+            <EmptyState icon={<Search size={40} />} title="NO MATCH" description="TRY A DIFFERENT SEARCH." />
           ) : (
-            <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
-              {managedTopics.map((topic) => (
+            <div className="max-h-[58vh] space-y-3 overflow-y-auto pr-1">
+              {filteredTopics.map((topic) => {
+                const stats = topicStats[topic.id];
+                const bundles = stats?.bundles ?? [];
+                const unlinkedBundles = allBundles.filter((b) => !b.topicId);
+                return (
                 <div
                   key={topic.id}
-                  className="flex items-center justify-between gap-3 border-2 border-border bg-bg p-3"
+                  className="border-2 border-border bg-bg p-3"
                 >
-                  {editTopicId === topic.id ? (
-                    <Input
-                      autoFocus
-                      value={editTopicName}
-                      onChange={(e) => setEditTopicName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleRenameTopic(topic.id);
-                        if (e.key === "Escape") {
-                          setEditTopicId(null);
-                          setEditTopicName("");
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span className="flex-1 truncate text-sm font-bold uppercase tracking-tight">
-                      {topic.name}
-                    </span>
-                  )}
-                  <div className="flex shrink-0 gap-1">
+                  <div className="flex items-start justify-between gap-3">
                     {editTopicId === topic.id ? (
-                      <Button size="sm" onClick={() => handleRenameTopic(topic.id)}>
-                        SAVE
-                      </Button>
+                      <Input
+                        autoFocus
+                        value={editTopicName}
+                        onChange={(e) => setEditTopicName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameTopic(topic.id);
+                          if (e.key === "Escape") {
+                            setEditTopicId(null);
+                            setEditTopicName("");
+                          }
+                        }}
+                      />
                     ) : (
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold uppercase tracking-tight">
+                          {topic.name}
+                        </span>
+                        {stats && (
+                          <span className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+                            <span className="inline-flex items-center gap-1"><FileText size={10} /> {stats.notes} NOTES</span>
+                            <span className="inline-flex items-center gap-1"><Layers size={10} /> {stats.cards} CARDS</span>
+                            <span className="inline-flex items-center gap-1"><BookOpen size={10} /> {bundles.length} BUNDLES</span>
+                          </span>
+                        )}
+                        {bundles.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {bundles.map((b) => (
+                              <button
+                                key={b.id}
+                                onClick={() => {
+                                  setManageTopicsFor(null);
+                                  router.push(`/bundles/${b.id}/cards`);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest hover:border-accent hover:text-accent"
+                                style={{ borderColor: b.color || manageSubjectColor, color: b.color || manageSubjectColor }}
+                                title="Manage bundle cards"
+                              >
+                                <Layers size={10} /> {b.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex shrink-0 gap-1">
+                      {editTopicId === topic.id ? (
+                        <Button size="sm" onClick={() => handleRenameTopic(topic.id)}>
+                          SAVE
+                        </Button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditTopicId(topic.id);
+                            setEditTopicName(topic.name);
+                          }}
+                          aria-label="Edit topic"
+                          className="p-2 text-muted-fg transition-colors hover:bg-accent hover:text-accent-fg"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setDeleteTopicId(topic.id)}
+                        aria-label="Delete topic"
+                        className="p-2 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Actions bar — the usable part */}
+                  {editTopicId !== topic.id && (
+                    <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
                       <button
                         onClick={() => {
-                          setEditTopicId(topic.id);
-                          setEditTopicName(topic.name);
+                          setManageTopicsFor(null);
+                          router.push(`/notes?topic=${topic.id}`);
                         }}
-                        aria-label="Edit topic"
-                        className="p-2 text-muted-fg transition-colors hover:bg-accent hover:text-accent-fg"
+                        className="inline-flex items-center gap-1 border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg hover:border-fg hover:text-fg"
                       >
-                        <Pencil size={14} />
+                        <FileText size={12} /> NOTES
                       </button>
-                    )}
-                    <button
-                      onClick={() => setDeleteTopicId(topic.id)}
-                      aria-label="Delete topic"
-                      className="p-2 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                      {bundles.length > 0 ? (
+                        <button
+                          onClick={() => {
+                            setManageTopicsFor(null);
+                            router.push(`/bundles/${bundles[0].id}/cards`);
+                          }}
+                          className="inline-flex items-center gap-1 border border-accent bg-accent px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent-fg hover:opacity-90"
+                        >
+                          <Layers size={12} /> CARDS ({bundles[0]._count.flashcards}) <ExternalLink size={10} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleCreateBundleFromTopic(topic.id)}
+                          disabled={isPending}
+                          className="inline-flex items-center gap-1 border border-accent bg-accent px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent-fg hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Plus size={12} /> NEW BUNDLE
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setLinkTopicId(linkTopicId === topic.id ? null : topic.id)}
+                        className="inline-flex items-center gap-1 border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg hover:border-accent hover:text-accent"
+                      >
+                        <Link2 size={12} /> LINK
+                      </button>
+                      {bundles.length > 1 && (
+                        <button
+                          onClick={() => {
+                            setManageTopicsFor(null);
+                            router.push(`/flashcards?topic=${topic.id}`);
+                          }}
+                          className="inline-flex items-center gap-1 border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg hover:border-fg hover:text-fg"
+                          title="Study all bundles for this topic"
+                        >
+                          STUDY ALL →
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Link picker inline */}
+                  {linkTopicId === topic.id && (
+                    <div className="mt-3 flex gap-2 border-t border-dashed border-border pt-3">
+                      <select
+                        value={linkBundleId}
+                        onChange={(e) => setLinkBundleId(e.target.value)}
+                        className="h-9 flex-1 border border-border bg-bg px-2 text-xs font-bold uppercase tracking-widest focus:outline-none focus:border-accent"
+                      >
+                        <option value="">SELECT BUNDLE...</option>
+                        {unlinkedBundles.map((b) => (
+                          <option key={b.id} value={b.id}>{b.name} ({b._count.flashcards} cards)</option>
+                        ))}
+                      </select>
+                      <Button size="sm" disabled={!linkBundleId} onClick={handleLinkBundle}>LINK</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setLinkTopicId(null)}>CANCEL</Button>
+                    </div>
+                  )}
                 </div>
-              ))}
+              )})}
             </div>
           )}
+          <p className="text-center text-[10px] uppercase tracking-widest text-muted-fg">
+            TIP — EACH TOPIC CAN HAVE ITS OWN BUNDLE. CARDS IN THAT BUNDLE STAY LINKED TO THE TOPIC.
+          </p>
         </div>
       </Modal>
 
@@ -405,7 +601,7 @@ export default function SubjectsPage() {
         {deleteTopicId && (
           <div className="space-y-6">
             <p className="text-sm text-muted-fg">
-              DELETE THIS TOPIC? ITS FLASHCARDS AND NOTES WILL BE MOVED TO NO TOPIC OR REMOVED. THIS CANNOT BE UNDONE.
+              DELETE THIS TOPIC? ITS FLASHCARDS AND NOTES WILL BE MOVED TO NO TOPIC OR REMOVED. LINKED BUNDLES WILL BE UNLINKED (NOT DELETED). THIS CANNOT BE UNDONE.
             </p>
             <div className="flex justify-end gap-4 pt-2">
               <Button variant="ghost" onClick={() => setDeleteTopicId(null)}>

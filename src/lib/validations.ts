@@ -78,6 +78,8 @@ export const bundleSchema = z.object({
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
     .default("#DFE104"),
+  topicId: z.string().min(1).optional().nullable(),
+  subjectId: z.string().min(1).optional().nullable(),
 });
 
 export type BundleInput = z.infer<typeof bundleSchema>;

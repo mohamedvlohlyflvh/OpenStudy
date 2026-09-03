@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
-import { Plus, Trash2, Pin, StickyNote, Pencil, Eye, BookOpen, Search } from "lucide-react";
+import { useState, useEffect, useTransition, Suspense } from "react";
+import { Plus, Trash2, Pin, StickyNote, Pencil, Eye, BookOpen, Search, X } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Card, Button, Modal, Input, EmptyState, Skeleton, Textarea } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
@@ -18,7 +19,10 @@ type Note = Omit<Awaited<ReturnType<typeof getAllNotes>>[number], "topic"> & {
   topic: Awaited<ReturnType<typeof getAllNotes>>[number]["topic"] | null;
 };
 
-export default function NotesPage() {
+function NotesContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const topicFilter = searchParams.get("topic");
   const [notes, setNotes] = useState<Note[]>([]);
   const [subjects, setSubjects] = useState<{ id: string; name: string; color: string }[]>([]);
   const [bundles, setBundles] = useState<BundleRec[]>([]);
@@ -70,6 +74,7 @@ export default function NotesPage() {
   }, []);
 
   const filteredNotes = notes.filter((n) => {
+    if (topicFilter && n.topicId !== topicFilter) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -80,6 +85,9 @@ export default function NotesPage() {
       (n.topic?.subject?.name ?? "").toLowerCase().includes(q)
     );
   });
+  const activeTopicName = topicFilter
+    ? notes.find((n) => n.topicId === topicFilter)?.topic?.name ?? topicFilter.slice(0, 8)
+    : null;
 
   const handleCreate = () => {
     if (!title.trim() || !selectedTopicId) return;
@@ -181,14 +189,24 @@ export default function NotesPage() {
         </div>
         {/* Search */}
         {loaded && notes.length > 0 && (
-          <div className="relative mt-8 max-w-md">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-fg" />
-            <input
-              placeholder="SEARCH NOTES..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:outline-none"
-            />
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <div className="relative max-w-md flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-fg" />
+              <input
+                placeholder="SEARCH NOTES..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:outline-none"
+              />
+            </div>
+            {topicFilter && (
+              <span className="inline-flex items-center gap-2 border-2 border-accent bg-accent px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-accent-fg">
+                <BookOpen size={12} /> {activeTopicName}
+                <button onClick={() => router.push("/notes")} className="ml-1 hover:opacity-70" title="Clear topic filter">
+                  <X size={12} />
+                </button>
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -462,5 +480,22 @@ export default function NotesPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+function NotesPageSuspenseFallback() {
+  return (
+    <div className="p-8 lg:p-12">
+      <Skeleton className="h-12 w-48" />
+      <Skeleton className="h-64 w-full mt-8" />
+    </div>
+  );
+}
+
+export default function NotesPage() {
+  return (
+    <Suspense fallback={<NotesPageSuspenseFallback />}>
+      <NotesContent />
+    </Suspense>
   );
 }

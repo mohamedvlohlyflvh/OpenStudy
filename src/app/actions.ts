@@ -187,6 +187,8 @@ export async function deleteTopic(id: string) {
   }
   await db.flashcards.where("topicId").equals(id).delete();
   await db.studySessions.where("topicId").equals(id).modify({ topicId: null });
+  // Unlink bundles that were owned by this topic — keep the bundle/cards, just detach
+  await db.bundles.where("topicId").equals(id).modify({ topicId: null, subjectId: null, updatedAt: new Date() });
   if (topic) await db.topics.delete(id);
   return topic;
 }
@@ -658,34 +660,109 @@ export async function getAllNotes() {
 export async function getBundles() {
   const all = await db.bundles.orderBy("createdAt").reverse().toArray();
   return Promise.all(
-    all.map(async (b) => ({
-      ...b,
-      _count: { flashcards: await db.flashcards.where("bundleId").equals(b.id).count() },
-    }))
+    all.map(async (b) => {
+      const topic = b.topicId ? await topicInclude(b.topicId) : null;
+      // topicInclude returns { id, name, subject } — attach for badges
+      return {
+        ...b,
+        topic,
+        _count: { flashcards: await db.flashcards.where("bundleId").equals(b.id).count() },
+      };
+    })
   );
 }
 
 export async function getBundle(id: string) {
   const bundle = await db.bundles.get(id);
   if (!bundle) return null;
+  const topic = bundle.topicId ? await topicInclude(bundle.topicId) : null;
   return {
     ...bundle,
+    topic,
     _count: { flashcards: await db.flashcards.where("bundleId").equals(id).count() },
   };
 }
 
-export async function createBundle(data: { name: string; description?: string; color?: string }) {
+export async function createBundle(data: { name: string; description?: string; color?: string; topicId?: string | null; subjectId?: string | null }) {
   const parsed = bundleSchema.parse(data);
+  // If topicId supplied without subjectId, denormalize from topic
+  let subjectId = parsed.subjectId ?? null;
+  if (parsed.topicId && !subjectId) {
+    const topic = await db.topics.get(parsed.topicId);
+    subjectId = topic?.subjectId ?? null;
+  }
   const now = new Date();
-  const bundle: BundleRec = { id: uid(), ...parsed, createdAt: now, updatedAt: now };
+  const bundle: BundleRec = { id: uid(), name: parsed.name, description: parsed.description ?? null, color: parsed.color, topicId: parsed.topicId ?? null, subjectId, createdAt: now, updatedAt: now };
   await db.bundles.add(bundle);
   return bundle;
 }
 
-export async function updateBundle(id: string, data: { name?: string; description?: string; color?: string }) {
+export async function updateBundle(id: string, data: { name?: string; description?: string; color?: string; topicId?: string | null; subjectId?: string | null }) {
   const parsed = bundleSchema.partial().parse(data);
+  // Keep subjectId in sync if topicId changes
+  if (parsed.topicId !== undefined && parsed.subjectId === undefined) {
+    if (parsed.topicId) {
+      const topic = await db.topics.get(parsed.topicId);
+      (parsed as Record<string, unknown>).subjectId = topic?.subjectId ?? null;
+    } else {
+      (parsed as Record<string, unknown>).subjectId = null;
+    }
+  }
   await db.bundles.update(id, { ...parsed, updatedAt: new Date() });
   return db.bundles.get(id);
+}
+
+export async function getBundlesByTopic(topicId: string) {
+  const all = await db.bundles.where("topicId").equals(topicId).toArray();
+  all.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return Promise.all(
+    all.map(async (b) => ({
+      ...b,
+      topic: await topicInclude(b.topicId),
+      _count: { flashcards: await db.flashcards.where("bundleId").equals(b.id).count() },
+    }))
+  );
+}
+
+export async function createBundleFromTopic(topicId: string, overrides?: { name?: string; color?: string; description?: string }) {
+  const topic = await db.topics.get(topicId);
+  if (!topic) throw new Error("Topic not found");
+  const subject = topic.subjectId ? await db.subjects.get(topic.subjectId) : undefined;
+  const name = overrides?.name?.trim() || topic.name;
+  const color = overrides?.color || subject?.color || "#DFE104";
+  const now = new Date();
+  const bundle: BundleRec = {
+    id: uid(),
+    name,
+    description: overrides?.description ?? null,
+    color,
+    topicId,
+    subjectId: topic.subjectId,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.bundles.add(bundle);
+  return { ...bundle, topic: await topicInclude(topicId), _count: { flashcards: 0 } };
+}
+
+export async function linkBundleToTopic(bundleId: string, topicId: string | null) {
+  const bundle = await db.bundles.get(bundleId);
+  if (!bundle) throw new Error("Bundle not found");
+  if (topicId) {
+    const topic = await db.topics.get(topicId);
+    if (!topic) throw new Error("Topic not found");
+    await db.bundles.update(bundleId, { topicId, subjectId: topic.subjectId, updatedAt: new Date() });
+    // Backfill: existing cards in this bundle that have no topic get the bundle's topic
+    const cards = await db.flashcards.where("bundleId").equals(bundleId).toArray();
+    for (const c of cards) {
+      if (!c.topicId) await db.flashcards.update(c.id, { topicId, subjectId: topic.subjectId, updatedAt: new Date() });
+    }
+  } else {
+    await db.bundles.update(bundleId, { topicId: null, subjectId: null, updatedAt: new Date() });
+  }
+  const updated = await db.bundles.get(bundleId);
+  if (!updated) return null;
+  return { ...updated, topic: updated.topicId ? await topicInclude(updated.topicId) : null, _count: { flashcards: await db.flashcards.where("bundleId").equals(bundleId).count() } };
 }
 
 export async function deleteBundle(id: string) {
@@ -853,10 +930,14 @@ export async function createBundleFlashcard(data: {
   const parsed = bundleCardSchema.parse(data);
   const { tags, ...rest } = parsed;
   const now = new Date();
+  // If bundle is topic-linked, propagate topicId/subjectId onto the card
+  const bundle = await db.bundles.get(rest.bundleId);
+  const topicId = bundle?.topicId ?? null;
+  const subjectId = bundle?.subjectId ?? null;
   const card: FlashcardRec = {
     id: uid(),
-    topicId: null,
-    subjectId: null,
+    topicId,
+    subjectId,
     bundleId: rest.bundleId,
     front: rest.front,
     back: rest.back,
@@ -887,10 +968,13 @@ export async function importCardsIntoBundle(
   );
 
   const now = new Date();
+  const bundle = await db.bundles.get(bundleId);
+  const topicId = bundle?.topicId ?? null;
+  const subjectId = bundle?.subjectId ?? null;
   const newCards: FlashcardRec[] = parsed.map((c) => ({
     id: uid(),
-    topicId: null,
-    subjectId: null,
+    topicId,
+    subjectId,
     bundleId,
     front: c.front,
     back: c.back,

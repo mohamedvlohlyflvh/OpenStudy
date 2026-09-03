@@ -67,7 +67,7 @@ export default function BundlesPage() {
     if (!newName.trim()) return;
     try {
       const bundle = await createBundle({ name: newName.trim(), description: newDesc.trim() || undefined, color: newColor });
-      setBundles((prev) => [{ ...bundle, _count: { flashcards: 0 } }, ...prev]);
+      setBundles((prev) => [{ ...(bundle as unknown as Bundle), topic: (bundle as unknown as { topic?: unknown }).topic ?? null, _count: { flashcards: 0 } } as unknown as Bundle, ...prev]);
       setCreateOpen(false);
       setNewName("");
       setNewDesc("");
@@ -232,6 +232,15 @@ export default function BundlesPage() {
                 <h3 className="truncate text-xl font-bold text-white transition-colors group-hover:text-yellow-400">
                   {bundle.name}
                 </h3>
+                {/* Topic badge */}
+                {(bundle as unknown as { topic?: { name: string; subject?: { name: string } | null } | null }).topic && (
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    {(bundle as unknown as { topic: { subject?: { name: string } | null; name: string } }).topic.subject?.name
+                      ? `${(bundle as unknown as { topic: { subject: { name: string } | null; name: string } }).topic.subject!.name} › `
+                      : ""}
+                    {(bundle as unknown as { topic: { name: string } }).topic.name}
+                  </p>
+                )}
                 {bundle.description && (
                   <p className="mt-1.5 line-clamp-2 text-sm text-zinc-400">
                     {bundle.description}

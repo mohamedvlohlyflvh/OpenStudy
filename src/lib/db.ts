@@ -63,6 +63,8 @@ export interface BundleRec {
   name: string;
   description?: string | null;
   color: string;
+  topicId?: string | null;
+  subjectId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -189,6 +191,10 @@ class OpenStudyDB extends Dexie {
     this.version(3).stores({
       goals: "id, status, horizon, subjectId, dueDate, createdAt, order",
       milestones: "id, goalId, order",
+    });
+    // v4: bundle topic link — bundle can be owned by a topic
+    this.version(4).stores({
+      bundles: "id, createdAt, topicId, subjectId",
     });
   }
 }
