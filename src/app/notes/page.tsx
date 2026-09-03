@@ -411,7 +411,7 @@ function NotesContent() {
       </Modal>
 
       {/* View / Study Modal — full reading experience */}
-      <Modal open={!!viewNote} onClose={() => setViewNote(null)} title={viewNote ? viewNote.title : "NOTE"}>
+      <Modal open={!!viewNote} onClose={() => setViewNote(null)} title={viewNote ? viewNote.title.toUpperCase() : "NOTE"}>
         {viewNote && (
           <div className="space-y-6">
             {viewNote.topic && (
@@ -432,11 +432,28 @@ function NotesContent() {
                 {viewNote.isPinned && <span className="ml-2 inline-flex items-center gap-1 text-accent"><Pin size={10} /> PINNED</span>}
               </p>
             )}
-            <div className="max-h-[55vh] overflow-y-auto rounded-xl border border-border bg-muted/30 p-5 text-sm leading-relaxed">
+            <div className="max-h-[55vh] overflow-y-auto rounded-2xl border-2 border-border bg-muted/10 p-6 text-sm leading-relaxed">
               {viewNote.content ? (
                 <Markdown content={viewNote.content} className="prose prose-invert max-w-none" />
               ) : (
-                <p className="text-muted-fg">NO CONTENT</p>
+                <div className="flex flex-col items-center py-8 text-center">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+                    <StickyNote size={20} />
+                  </div>
+                  <p className="text-sm font-bold uppercase tracking-widest">NO CONTENT YET</p>
+                  <p className="mt-1 text-xs text-muted-fg">Edit this note to add study material</p>
+                  <Button
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => {
+                      const n = viewNote;
+                      setViewNote(null);
+                      setTimeout(() => openEdit(n), 150);
+                    }}
+                  >
+                    <Pencil size={14} /> EDIT NOTE
+                  </Button>
+                </div>
               )}
             </div>
             {viewNote.tags.length > 0 && (

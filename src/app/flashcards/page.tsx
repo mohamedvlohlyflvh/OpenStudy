@@ -591,7 +591,7 @@ function FlashcardsContent() {
               setStatsLoaded(false);
             }}
             aria-label="Select bundle to study"
-            className="flex h-10 items-center gap-2 border-2 border-border bg-bg px-3 text-sm font-bold uppercase tracking-tight text-fg focus:outline-none"
+            className="flex h-10 items-center gap-2 rounded-xl border border-glass-border bg-glass px-3 text-sm font-bold uppercase tracking-tight text-fg backdrop-blur-md focus:outline-none focus:border-accent"
           >
             <option value="" className="bg-bg text-fg">ALL BUNDLES</option>
             {bundles.map((b) => (

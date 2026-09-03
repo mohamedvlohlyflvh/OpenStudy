@@ -487,12 +487,12 @@ export default function SessionsPage() {
         </div>
 
         {/* Timer Hero — 2 cols */}
-        <div className="lg:col-span-2 flex flex-col items-center justify-center bg-zinc-900 border border-zinc-800 rounded-xl p-8">
+        <div className="lg:col-span-2 flex flex-col items-center justify-center bg-zinc-900 border border-zinc-800 rounded-xl p-6 sm:p-8">
           {mode === "stopwatch" ? (
             <>
               <div
                 className={cn(
-                  "relative flex w-full flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border px-6 py-8 transition-colors",
+                  "relative flex w-full flex-col items-center justify-center gap-3 rounded-2xl border px-4 sm:px-6 py-8 transition-colors",
                   timerRunning && !timerPaused
                     ? "border-accent/40 bg-accent/[0.04] shadow-[0_0_50px_-12px_rgba(250,204,21,0.25)]"
                     : "border-zinc-800 bg-zinc-900/60"
@@ -515,7 +515,7 @@ export default function SessionsPage() {
 
                 <p
                   className={cn(
-                    "font-mono text-5xl font-extrabold tracking-wider tabular-nums transition-colors sm:text-7xl",
+                    "font-mono text-4xl font-extrabold tracking-tight tabular-nums transition-colors sm:text-5xl lg:text-6xl whitespace-nowrap",
                     timerRunning && !timerPaused ? "text-yellow-300 drop-shadow-[0_0_24px_rgba(250,204,21,0.35)]" : "text-white"
                   )}
                 >

@@ -204,25 +204,38 @@ export default function StatsPage() {
             </div>
             <span className="text-[10px] font-mono uppercase tracking-widest text-muted-fg">max {Math.max(...daily.map(d=>d.count))}/day</span>
           </div>
-          <div className="flex items-end gap-[3px] h-[110px]">
-            {daily.map((d, i) => {
-              const max = Math.max(1, ...daily.map(x=>x.count));
-              const hPx = Math.round((d.count / max) * 88) + (d.count>0?4:0);
-              const isToday = i === daily.length - 1;
-              return (
-                <div key={i} className="flex flex-1 flex-col justify-end items-center" style={{ height: 110 }}>
-                  <div title={`${d.label}: ${d.count}`} className="w-full rounded-sm transition-all hover:opacity-80" style={{ height: `${hPx}px`, background: d.count === 0 ? "var(--color-muted)" : isToday ? "var(--color-accent)" : "var(--color-accent)", opacity: d.count === 0 ? 0.25 : 0.9 }} />
-                </div>
-              );
-            })}
-          </div>
+          {daily.every((d) => d.count === 0) ? (
+            <div className="flex h-[110px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
+              <p className="text-xs font-bold uppercase tracking-widest text-muted-fg">NO ACTIVITY YET</p>
+              <p className="mt-1 text-[11px] text-muted-fg">Start reviewing to see your activity</p>
+            </div>
+          ) : (
+            <div className="flex items-end gap-[3px] h-[110px]">
+              {daily.map((d, i) => {
+                const max = Math.max(1, ...daily.map(x=>x.count));
+                const hPx = Math.round((d.count / max) * 88) + (d.count>0?4:0);
+                const isToday = i === daily.length - 1;
+                return (
+                  <div key={i} className="flex flex-1 flex-col justify-end items-center" style={{ height: 110 }}>
+                    <div title={`${d.label}: ${d.count}`} className="w-full rounded-sm transition-all hover:opacity-80" style={{ height: `${hPx}px`, background: d.count === 0 ? "var(--color-muted)" : isToday ? "var(--color-accent)" : "var(--color-accent)", opacity: d.count === 0 ? 0.25 : 0.9 }} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="mt-2 flex justify-between text-[9px] font-mono uppercase text-muted-fg/60">
             <span>{daily[0].label}</span><span>{daily[14].label}</span><span>{daily[29].label} (today)</span>
           </div>
           {/* weekly velocity mini */}
           <div className="mt-6 border-t border-border pt-4">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-fg">Weekly velocity — last 12 weeks</p>
-            <Bars data={weekly.map(w=>w.count)} color="var(--color-flow)" h={64} />
+            {weekly.every((w) => w.count === 0) ? (
+              <div className="flex h-16 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 text-xs font-bold uppercase tracking-widest text-muted-fg">
+                NO WEEKLY DATA YET
+              </div>
+            ) : (
+              <Bars data={weekly.map(w=>w.count)} color="var(--color-flow)" h={64} />
+            )}
             <div className="mt-1 flex justify-between text-[9px] font-mono uppercase text-muted-fg/60"><span>{weekly[0].label}</span><span>{weekly[weekly.length-1].label}</span></div>
           </div>
         </Card>
