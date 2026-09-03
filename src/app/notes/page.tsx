@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { Plus, Trash2, Pin, StickyNote, Pencil } from "lucide-react";
+import { Plus, Trash2, Pin, StickyNote, Pencil, Eye, BookOpen, Search } from "lucide-react";
 import { Card, Button, Modal, Input, EmptyState, Skeleton, Textarea } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
@@ -29,12 +29,16 @@ export default function NotesPage() {
   const [content, setContent] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
+  const [search, setSearch] = useState("");
 
   // Edit state
   const [editNote, setEditNote] = useState<Note | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
+
+  // View / Study state — full reading mode
+  const [viewNote, setViewNote] = useState<Note | null>(null);
 
   useEffect(() => {
     Promise.all([getAllNotes(), getSubjects(), getBundles()]).then(([n, s, b]) => {
@@ -58,26 +62,43 @@ export default function NotesPage() {
       if (e.key === "Escape") {
         setModalOpen(false);
         setEditNote(null);
+        setViewNote(null);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  const filteredNotes = notes.filter((n) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      n.title.toLowerCase().includes(q) ||
+      (n.content ?? "").toLowerCase().includes(q) ||
+      n.tags.some((t) => t.tag.name.toLowerCase().includes(q)) ||
+      (n.topic?.name ?? "").toLowerCase().includes(q) ||
+      (n.topic?.subject?.name ?? "").toLowerCase().includes(q)
+    );
+  });
+
   const handleCreate = () => {
     if (!title.trim() || !selectedTopicId) return;
     startTransition(async () => {
-      const note = await createNote({
+      await createNote({
         topicId: selectedTopicId,
         title: title.trim(),
         content: content.trim(),
         tags,
       });
-      setNotes((prev) => [{ ...note, topic: null, tags: note.tags ?? [] } as Note, ...prev]);
+      // Re-fetch so topic include + real tag ids are correct (previous
+      // optimistic push used topic: null and fabricated tag ids).
+      const fresh = await getAllNotes();
+      setNotes(fresh as Note[]);
       setModalOpen(false);
       setTitle("");
       setContent("");
       setTags([]);
+      setSelectedTopicId("");
     });
   };
 
@@ -86,24 +107,34 @@ export default function NotesPage() {
     setNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isPinned: !isPinned } : n))
     );
+    // keep viewNote in sync if it's the pinned one
+    setViewNote((prev) => (prev?.id === id ? { ...prev, isPinned: !isPinned } : prev));
   };
 
   const handleDelete = (note: Note) => {
+    // close view if we delete the note being viewed
+    if (viewNote?.id === note.id) setViewNote(null);
     startTransition(async () => {
       await deleteNote(note.id);
       setNotes((prev) => prev.filter((n) => n.id !== note.id));
       showUndo({
         message: `NOTE "${note.title}" DELETED`,
         undo: async () => {
-          // Re-create the note (best-effort restore)
+          if (!note.topicId) {
+            // Shouldn't happen — notes always have a topic — but guard
+            // so undo doesn't throw a zod validation error.
+            const fresh = await getAllNotes();
+            setNotes(fresh as Note[]);
+            return;
+          }
           await createNote({
             title: note.title,
             content: note.content || "",
-            topicId: note.topicId ?? undefined,
+            topicId: note.topicId,
             tags: note.tags.map((t) => t.tag.name),
           });
-          const [n] = await Promise.all([getAllNotes()]);
-          setNotes(n);
+          const n = await getAllNotes();
+          setNotes(n as Note[]);
         },
       });
     });
@@ -119,25 +150,20 @@ export default function NotesPage() {
   const handleEditSave = async () => {
     if (!editNote || !editTitle.trim()) return;
     await updateNote(editNote.id, { title: editTitle.trim(), content: editContent.trim(), tags: editTags });
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === editNote.id
-          ? {
-              ...n,
-              title: editTitle.trim(),
-              content: editContent.trim(),
-              tags: editTags.map((name) => ({ tag: { id: name, name } })) as Note["tags"],
-            }
-          : n
-      )
-    );
+    const fresh = await getAllNotes();
+    setNotes(fresh as Note[]);
+    // keep view in sync
+    if (viewNote?.id === editNote.id) {
+      const updated = (fresh as Note[]).find((n) => n.id === editNote.id);
+      if (updated) setViewNote(updated);
+    }
     setEditNote(null);
   };
 
   return (
     <div className="p-8 lg:p-12">
       {/* Header */}
-      <div className="mb-16">
+      <div className="mb-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <RevealHeading text="NOTES" className="text-5xl lg:text-8xl" />
@@ -153,6 +179,18 @@ export default function NotesPage() {
             </Button>
           </div>
         </div>
+        {/* Search */}
+        {loaded && notes.length > 0 && (
+          <div className="relative mt-8 max-w-md">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-fg" />
+            <input
+              placeholder="SEARCH NOTES..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full border-2 border-border bg-bg pl-10 pr-3 text-sm font-bold uppercase tracking-tight text-fg placeholder:text-muted focus:outline-none"
+            />
+          </div>
+        )}
       </div>
 
       {!loaded ? (
@@ -177,12 +215,23 @@ export default function NotesPage() {
             </Button>
           }
         />
+      ) : filteredNotes.length === 0 ? (
+        <EmptyState
+          icon={<Search size={48} />}
+          title="NO RESULTS"
+          description="TRY A DIFFERENT SEARCH."
+        />
       ) : (
         <div className="grid gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
-          {notes.map((note) => (
-            <Card key={note.id} hover className="group relative flex flex-col">
+          {filteredNotes.map((note) => (
+            <Card
+              key={note.id}
+              hover
+              className="group relative flex cursor-pointer flex-col"
+              onClick={() => setViewNote(note)}
+            >
               <div className="mb-4 flex items-start justify-between">
-                <div>
+                <div className="min-w-0 flex-1">
                   <h3 className="text-lg font-bold uppercase tracking-tight">
                     {note.title}
                   </h3>
@@ -204,7 +253,18 @@ export default function NotesPage() {
                     </p>
                   )}
                 </div>
-                <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                <div
+                  className="flex shrink-0 gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setViewNote(note)}
+                    className="p-2.5 text-muted hover:text-accent transition-colors"
+                    title="Study / view note"
+                    aria-label="Study note"
+                  >
+                    <Eye size={14} />
+                  </button>
                   <NoteAiImportButton
                     noteId={note.id}
                     noteTitle={note.title}
@@ -213,6 +273,7 @@ export default function NotesPage() {
                   <button
                     onClick={() => openEdit(note)}
                     className="p-2.5 text-muted hover:text-accent transition-colors"
+                    title="Edit"
                   >
                     <Pencil size={14} />
                   </button>
@@ -221,12 +282,14 @@ export default function NotesPage() {
                     className={`p-2.5 transition-colors ${
                       note.isPinned ? "text-accent" : "text-muted hover:text-fg"
                     }`}
+                    title={note.isPinned ? "Unpin" : "Pin"}
                   >
                     <Pin size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(note)}
                     className="p-2.5 text-muted hover:text-danger transition-colors"
+                    title="Delete"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -235,8 +298,11 @@ export default function NotesPage() {
               <div className="flex-1 text-sm text-muted-fg line-clamp-6">
                 {note.content ? <Markdown content={note.content} /> : "NO CONTENT"}
               </div>
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-accent opacity-0 transition-opacity group-hover:opacity-100">
+                CLICK TO STUDY →
+              </p>
               {note.tags.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-1">
+                <div className="mt-3 flex flex-wrap gap-1">
                   {note.tags.map(({ tag }) => (
                     <span
                       key={tag.id}
@@ -264,6 +330,11 @@ export default function NotesPage() {
               value={selectedTopicId}
               onChange={setSelectedTopicId}
             />
+            {!selectedTopicId && subjects.length > 0 && (
+              <p className="text-[11px] uppercase tracking-widest text-warning">
+                Pick a subject above and click USE to link a topic before creating.
+              </p>
+            )}
           </div>
           <Input
             label="TITLE"
@@ -273,7 +344,7 @@ export default function NotesPage() {
           />
           <Textarea
             label="CONTENT"
-            placeholder="WRITE YOUR NOTES..."
+            placeholder="WRITE YOUR NOTES... (Markdown supported)"
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={8}
@@ -317,6 +388,76 @@ export default function NotesPage() {
                 SAVE
               </Button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* View / Study Modal — full reading experience */}
+      <Modal open={!!viewNote} onClose={() => setViewNote(null)} title={viewNote ? viewNote.title : "NOTE"}>
+        {viewNote && (
+          <div className="space-y-6">
+            {viewNote.topic && (
+              <p className="text-xs text-muted-fg uppercase tracking-widest">
+                {viewNote.topic.subject?.name && (
+                  <span
+                    className="mr-1 inline-block px-1.5 py-0.5 text-[10px] font-bold"
+                    style={{
+                      backgroundColor: viewNote.topic.subject.color,
+                      color: readableOn(viewNote.topic.subject.color),
+                    }}
+                  >
+                    {viewNote.topic.subject.name}
+                  </span>
+                )}
+                {viewNote.topic.subject?.name && " › "}
+                {viewNote.topic.name}
+                {viewNote.isPinned && <span className="ml-2 inline-flex items-center gap-1 text-accent"><Pin size={10} /> PINNED</span>}
+              </p>
+            )}
+            <div className="max-h-[55vh] overflow-y-auto rounded-xl border border-border bg-muted/30 p-5 text-sm leading-relaxed">
+              {viewNote.content ? (
+                <Markdown content={viewNote.content} className="prose prose-invert max-w-none" />
+              ) : (
+                <p className="text-muted-fg">NO CONTENT</p>
+              )}
+            </div>
+            {viewNote.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {viewNote.tags.map(({ tag }) => (
+                  <span
+                    key={tag.id}
+                    className="bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg"
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+              <Button variant="ghost" onClick={() => setViewNote(null)}>
+                CLOSE
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const n = viewNote;
+                  setViewNote(null);
+                  setTimeout(() => openEdit(n), 150);
+                }}
+              >
+                <Pencil size={14} /> EDIT
+              </Button>
+              <div onClick={(e) => e.stopPropagation()}>
+                <NoteAiImportButton
+                  noteId={viewNote.id}
+                  noteTitle={viewNote.title}
+                  availableBundles={bundles}
+                />
+              </div>
+            </div>
+            <p className="text-center text-[10px] uppercase tracking-widest text-muted-fg">
+              <BookOpen size={10} className="mr-1 inline" /> STUDY MODE — READ, THEN IMPORT TO FLASHCARDS WITH AI IMPORT
+            </p>
           </div>
         )}
       </Modal>

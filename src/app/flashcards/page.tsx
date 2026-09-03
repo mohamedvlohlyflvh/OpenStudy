@@ -137,7 +137,8 @@ function FlashcardsContent() {
       const matchesSearch =
         !q ||
         card.front.toLowerCase().includes(q) ||
-        card.back.toLowerCase().includes(q);
+        card.back.toLowerCase().includes(q) ||
+        (card.description ?? "").toLowerCase().includes(q);
       return matchesSearch;
     });
   }, [browseCards, browseQuery]);
@@ -928,6 +929,11 @@ function FlashcardsContent() {
                       <div className="text-3xl font-bold uppercase leading-relaxed tracking-tight sm:text-4xl">
                         {activeCard.front}
                       </div>
+                      {activeCard.description && (
+                        <p className="mt-4 max-w-[28rem] text-sm font-normal normal-case tracking-normal leading-relaxed text-zinc-400">
+                          {activeCard.description}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center justify-between border-t border-border/60 px-7 py-3.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
                       <span className="font-mono">#{activeCard.id.slice(-4)}</span>
@@ -948,6 +954,11 @@ function FlashcardsContent() {
                       <div className="[&_p]:text-accent-fg [&_li]:text-accent-fg text-3xl font-bold uppercase leading-relaxed tracking-tight text-accent-fg sm:text-4xl [&_.md-p]:text-accent-fg">
                         <Markdown content={activeCard.back} />
                       </div>
+                      {activeCard.description && (
+                        <p className="mt-4 max-w-[28rem] text-sm font-normal normal-case tracking-normal leading-relaxed text-accent-fg/70">
+                          {activeCard.description}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center justify-between border-t border-accent-fg/15 px-7 py-3.5 text-[10px] font-bold uppercase tracking-widest text-accent-fg/70">
                       <span className="font-mono">#{activeCard.id.slice(-4)}</span>
@@ -1133,6 +1144,16 @@ function FlashcardsContent() {
                         <div className="text-lg font-bold uppercase tracking-tight leading-relaxed">{flipped ? <Markdown content={card.back} /> : card.front}</div>
                       </div>
                     </div>
+                    {card.description && (
+                      <p
+                        className={cn(
+                          "mt-2 text-xs leading-relaxed tracking-tight",
+                          flipped ? "text-accent-fg/70" : "text-zinc-400"
+                        )}
+                      >
+                        {card.description}
+                      </p>
+                    )}
                     {/* Tags */}
                     {card.tags && card.tags.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">

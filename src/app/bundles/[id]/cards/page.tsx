@@ -135,7 +135,8 @@ export default function BundleCardsPage() {
       const matchesSearch =
         !q ||
         card.front.toLowerCase().includes(q) ||
-        card.back.toLowerCase().includes(q);
+        card.back.toLowerCase().includes(q) ||
+        (card.description ?? "").toLowerCase().includes(q);
       const matchesTag =
         filterTag === "all" || card.tags.some((t) => t.tag.name === filterTag);
       return matchesSearch && matchesTag;
