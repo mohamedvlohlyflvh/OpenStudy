@@ -18,22 +18,13 @@ function escapeHtml(s: string): string {
 
 function renderInline(text: string): string {
   let s = escapeHtml(text);
-  // images ![alt](url) — must come before links to avoid false matches.
-  // Only http(s), site-relative, and data:image URLs are rendered; anything
-  // else stays as literal (escaped) text. Combined with quote escaping in
-  // escapeHtml, this closes the attribute-breakout XSS vector via card
-  // content (front/back come from imports and pasted LLM output).
   s = s.replace(
     /!\[([^\]]*)\]\((https?:\/\/[^\s)]+|\/[^\)]*|\.\.?\/[^\s)]*|data:image\/[^\s)]+)\)/gi,
     '<img src="$2" alt="$1" class="md-img" style="max-width:100%;height:auto;border-radius:4px;" />'
   );
-  // inline code
   s = s.replace(/`([^`]+)`/g, '<code class="md-code">$1</code>');
-  // bold
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  // italic
   s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  // links [text](url)
   s = s.replace(
     /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>'
@@ -44,12 +35,13 @@ function renderInline(text: string): string {
 export function Markdown({ content, className }: { content: string; className?: string }): ReactNode {
   const hasArabic = /[\u0600-\u06FF]/.test(content ?? "");
   const outerDir = hasArabic ? ("rtl" as const) : undefined;
-  // Normalize stray HTML breaks that would otherwise show as literal text
   const normalized = (content ?? "")
     .replace(/<\/?br\s*\/?>/gi, "\n")
-    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;\/?br\s*\/?&gt;/gi, "\n")
+    .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/<\/?div[^>]*>/gi, "\n")
-    .replace(/<\/?p[^>]*>/gi, "\n");
+    .replace(/<\/?p[^>]*>/gi, "\n")
+    .replace(/\u00A0/g, " ");
   const lines = normalized.split(/\r?\n/);
   const blocks: ReactNode[] = [];
   let i = 0;
@@ -57,8 +49,6 @@ export function Markdown({ content, className }: { content: string; className?: 
 
   while (i < lines.length) {
     const line = lines[i];
-
-    // Code block
     if (line.trim().startsWith("```")) {
       const code: string[] = [];
       i++;
@@ -66,7 +56,7 @@ export function Markdown({ content, className }: { content: string; className?: 
         code.push(lines[i]);
         i++;
       }
-      i++; // skip closing ```
+      i++;
       blocks.push(
         <pre key={key++} className="md-pre">
           <code>{code.join("\n")}</code>
@@ -74,8 +64,6 @@ export function Markdown({ content, className }: { content: string; className?: 
       );
       continue;
     }
-
-    // Heading
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const level = heading[1].length;
@@ -87,8 +75,6 @@ export function Markdown({ content, className }: { content: string; className?: 
       i++;
       continue;
     }
-
-    // Blockquote
     if (line.startsWith(">")) {
       const quote: string[] = [];
       while (i < lines.length && lines[i].startsWith(">")) {
@@ -100,8 +86,6 @@ export function Markdown({ content, className }: { content: string; className?: 
       );
       continue;
     }
-
-    // Unordered list
     if (/^[-*]\s+/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
@@ -117,8 +101,6 @@ export function Markdown({ content, className }: { content: string; className?: 
       );
       continue;
     }
-
-    // Ordered list
     if (/^\d+\.\s+/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
@@ -134,14 +116,10 @@ export function Markdown({ content, className }: { content: string; className?: 
       );
       continue;
     }
-
-    // Blank line
     if (line.trim() === "") {
       i++;
       continue;
     }
-
-    // Paragraph (gather consecutive non-special lines)
     const para: string[] = [];
     while (
       i < lines.length &&
