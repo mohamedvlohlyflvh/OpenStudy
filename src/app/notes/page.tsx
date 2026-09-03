@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition, Suspense } from "react";
 import { Plus, Trash2, Pin, StickyNote, Pencil, Eye, BookOpen, Search, X } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Card, Button, Modal, Input, EmptyState, Skeleton, Textarea } from "@/components/ui";
+import { Button, Modal, Input, EmptyState, Skeleton, Textarea } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { getAllNotes, getSubjects, createNote, deleteNote, updateNote, getBundles } from "@/app/actions";
@@ -12,7 +12,6 @@ import { TagInput } from "@/components/tag-input";
 import { Markdown } from "@/components/markdown";
 import { NoteAiImportButton } from "@/components/note-ai-import-button";
 import { showUndo } from "@/components/undo-toast";
-import { readableOn } from "@/lib/utils";
 import { spotlightProps } from "@/lib/interactions";
 import type { BundleRec } from "@/lib/db";
 

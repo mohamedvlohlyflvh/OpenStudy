@@ -81,11 +81,10 @@ export function UndoToastHost() {
   };
 
   const handleDismiss = () => {
-    if (activeCommitTimer !== null) {
-      clearTimeout(activeCommitTimer);
-      activeCommitTimer = null;
-    }
-    if (timer) clearTimeout(timer);
+    // Dismissing (✕) is NOT an undo — a deferred destructive action
+    // (onCommit pattern, e.g. /bundles delete) must still fire. The commit
+    // timer (`timer` === activeCommitTimer for this toast) keeps running and
+    // does its own cleanup when it fires. Only the toast is hidden here.
     dismiss();
   };
 

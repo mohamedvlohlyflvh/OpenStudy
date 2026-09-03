@@ -3,8 +3,8 @@
 // ─── TopBar — greeting, live clock, global search trigger ─────────
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import { useAppStore } from "@/lib/store";
 
 function greetingFor(h: number) {
   if (h < 5) return "Still up";
@@ -15,7 +15,8 @@ function greetingFor(h: number) {
 
 export function TopBar({ dueCards }: { dueCards: number }) {
   const [now, setNow] = useState<Date | null>(null);
-  const setSearchQuery = useAppStore((s) => s.setSearchQuery);
+  const [q, setQ] = useState("");
+  const router = useRouter();
 
   useEffect(() => {
     // rAF defers the first tick past the effect's sync phase — silences
@@ -67,7 +68,16 @@ export function TopBar({ dueCards }: { dueCards: number }) {
         <Search size={15} aria-hidden className="absolute left-4 text-muted-fg" />
         <input
           id="global-search"
-          onChange={(e) => setSearchQuery(e.target.value)}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            // Global search now goes somewhere: Enter jumps to the flashcards
+            // browse tab (search all cards) pre-filtered with the query.
+            // Previously this wrote to a store field nothing ever read.
+            if (e.key === "Enter" && q.trim()) {
+              router.push(`/flashcards?mode=browse&q=${encodeURIComponent(q.trim())}`);
+            }
+          }}
           placeholder="Search cards, notes…"
           className="w-full bg-transparent pl-10 pr-14 text-sm text-fg placeholder:text-muted-fg/60 outline-none"
         />

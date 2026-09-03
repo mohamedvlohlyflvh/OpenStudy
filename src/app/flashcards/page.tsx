@@ -11,6 +11,7 @@ import { showUndo } from "@/components/undo-toast";
 import {
   getDueFlashcards,
   getSubjects,
+  getFlashcards,
   getAllFlashcards,
   getAllDueFlashcards,
   createFlashcard,
@@ -22,6 +23,7 @@ import {
   unLeechCard,
   getHeatmapData,
   getStreak,
+  getAllReviewLogs,
   createBundleFlashcard,
   exportBundle,
   importBundleCards,
@@ -41,6 +43,7 @@ import { parseCardsFile } from "@/lib/parsers/cards";
 import { db as offlineDb, cacheBundles, cacheFlashcards, getCachedBundleCards } from "@/lib/db";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
+import { TagInput } from "@/components/tag-input";
 import { ImageUploadButton } from "@/components/image-upload-button";
 import { AiImportButton } from "@/components/ai-import-button";
 
@@ -68,12 +71,19 @@ function FlashcardsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const bundleParam = searchParams.get("bundle");
+  const topicParam = searchParams.get("topic");
+  const modeParam = searchParams.get("mode");
+  const qParam = searchParams.get("q");
 
   // ─── Core state ─────────────────────────────────────────────
-  const [mode, setMode] = useState<"review" | "browse" | "leeches" | "stats">("review");
+  const [mode, setMode] = useState<"review" | "browse" | "leeches" | "stats">(() =>
+    modeParam === "gallery" || modeParam === "browse" ? "browse" : "review"
+  );
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [selectedBundle, setSelectedBundle] = useState(bundleParam || "");
   const allDueParam = searchParams.get("all") === "1";
+  // Prefill browse search from ?q= (global TopBar search lands here)
+  const [browseQuery, setBrowseQuery] = useState(qParam ?? "");
   // Derived from the URL (?all=1) — the old setAllDue was never called, which
   // froze Study All Due at its mount-time value.
   const allDue = allDueParam;
@@ -112,7 +122,6 @@ function FlashcardsContent() {
   const [browseCards, setBrowseCards] = useState<ManagedFlashcard[]>([]);
   const [browseBundles, setBrowseBundles] = useState<Bundle[]>([]);
   const [browseLoaded, setBrowseLoaded] = useState(false);
-  const [browseQuery, setBrowseQuery] = useState("");
   const [browseScope, setBrowseScope] = useState<"cards" | "bundles">("cards");
   const [browseFlipped, setBrowseFlipped] = useState<Set<string>>(new Set());
   const [browseSelected, setBrowseSelected] = useState<Set<string>>(new Set());
@@ -154,6 +163,8 @@ function FlashcardsContent() {
   const [heatmap, setHeatmap] = useState<{ date: string; count: number }[]>([]);
   const [streak, setStreak] = useState(0);
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [reviewsToday, setReviewsToday] = useState(0);
+  const [statsLeechCount, setStatsLeechCount] = useState(0);
 
   // ─── Create modal ───────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false);
@@ -168,6 +179,7 @@ function FlashcardsContent() {
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ManagedFlashcard | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -225,19 +237,29 @@ function FlashcardsContent() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let cards: Flashcard[];
+      let cards: Flashcard[] = [];
       if (!selectedBundle && !allDue) {
         cards = []; // bundle-overview view — nothing to serve
       } else if (allDue) {
         // Study All Due: due queue across every bundle
         cards = (await getAllDueFlashcards()) as Flashcard[];
+      } else if (topicParam) {
+        // Topic context (subjects → STUDY ALL): only DUE cards for that topic
+        const now = Date.now();
+        const topicCards = await getFlashcards(topicParam);
+        cards = (topicCards as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now);
       } else {
         try {
-          cards = (await getBundleCards(selectedBundle)) as Flashcard[];
+          const now = Date.now();
+          // Bundle review: serve ONLY cards whose nextReview has arrived —
+          // serving every card broke SM-2 (a +30d card was shown today).
+          const all: Flashcard[] = (await getBundleCards(selectedBundle)) as Flashcard[];
+          cards = all.filter((c) => new Date(c.nextReview).getTime() <= now);
         } catch {
           // offline fallback
           const cached = await getCachedBundleCards(selectedBundle);
-          cards = cached as unknown as Flashcard[];
+          const now = Date.now();
+          cards = (cached as unknown as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now);
         }
       }
       if (cancelled) return;
@@ -251,33 +273,39 @@ function FlashcardsContent() {
       sessionRef.current = { reviewed: 0, correct: 0, startedAt: 0 };
     })();
     return () => { cancelled = true; };
-  }, [selectedBundle, allDue]);
+  }, [selectedBundle, allDue, topicParam]);
 
   const loadDueCards = useCallback(async () => {
     let cards: Flashcard[];
+    const now = Date.now();
     if (allDue) {
       cards = (await getAllDueFlashcards()) as Flashcard[];
+    } else if (topicParam) {
+      cards = ((await getFlashcards(topicParam)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now);
     } else {
       cards = selectedBundle
-        ? await getBundleCards(selectedBundle)
-        : await getAllFlashcards();
+        ? ((await getBundleCards(selectedBundle)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now)
+        : (await getAllFlashcards()) as unknown as Flashcard[];
     }
     setDueCards(cards);
     setCurrentIndex(0);
     setIsFlipped(false);
-  }, [selectedBundle, allDue]);
+  }, [selectedBundle, allDue, topicParam]);
 
   const fetchMoreDue = useCallback(async () => {
     let more: Flashcard[];
+    const now = Date.now();
     if (allDue) {
       more = (await getAllDueFlashcards()) as Flashcard[];
+    } else if (topicParam) {
+      more = ((await getFlashcards(topicParam)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now);
     } else {
       more = selectedBundle
-        ? await getBundleCards(selectedBundle)
-        : await getAllFlashcards();
+        ? ((await getBundleCards(selectedBundle)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now)
+        : (await getAllFlashcards()) as unknown as Flashcard[];
     }
     setDueCards((prev) => [...prev, ...(more as Flashcard[]).filter((c) => !prev.some((p) => p.id === c.id))]);
-  }, [selectedBundle, allDue]);
+  }, [selectedBundle, allDue, topicParam]);
 
   // Full reload of bundle list + card lists (used after import).
   const reloadCards = useCallback(async () => {
@@ -324,8 +352,10 @@ function FlashcardsContent() {
         });
         setCompletedCount((c) => c + 1);
 
-        if (quality < 3) {
-          // AGAIN / HARD: requeue the card for later in THIS session
+        if (quality < 3 && !servingFromQueue) {
+          // AGAIN / HARD on the MAIN queue: requeue for later in THIS session.
+          // (When serving FROM the relearn queue the rotate branch below already
+          // handles it — appending here too duplicated the card every lapse.)
           setLearningQueue((prev) => [...prev, activeCard]);
         }
 
@@ -420,9 +450,22 @@ function FlashcardsContent() {
 
   // ─── Stats data ─────────────────────────────────────────────
   const loadStats = useCallback(async () => {
-    const [h, s] = await Promise.all([getHeatmapData(), getStreak()]);
+    const [h, s, logs, leeches] = await Promise.all([
+      getHeatmapData(),
+      getStreak(),
+      getAllReviewLogs(),
+      // Fresh leech count from DB — leechCards state is only populated when the
+      // LEECHES tab is visited, so it always showed 0 on a direct stats visit.
+      getLeechCards(),
+    ]);
     setHeatmap(h);
     setStreak(s);
+    // Reviews TODAY from the review log, not the current-run counter
+    // (totalReviewed resets on reload and is per-run, not per-day).
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    setReviewsToday(logs.filter((r) => new Date(r.reviewedAt).getTime() >= startOfDay.getTime()).length);
+    setStatsLeechCount(leeches.length);
     setStatsLoaded(true);
   }, []);
 
@@ -455,8 +498,15 @@ function FlashcardsContent() {
     if (!editCard || !editFront.trim() || !editBack.trim()) return;
     setSaving(true);
     try {
-      await updateFlashcard(editCard.id, { front: editFront.trim(), back: editBack.trim(), description: editDesc.trim() || null });
+      await updateFlashcard(editCard.id, {
+        front: editFront.trim(),
+        back: editBack.trim(),
+        description: editDesc.trim() || null,
+        tags: editTags,
+      });
       setEditCard(null);
+      // Refresh browse list so the edited card shows new text immediately
+      if (browseLoaded) await loadBrowseAll();
     } finally {
       setSaving(false);
     }
@@ -482,6 +532,7 @@ function FlashcardsContent() {
       await deleteFlashcard(snapshot.id);
       setDeleteTarget(null);
       await loadDueCards();
+      if (browseLoaded) await loadBrowseAll();
       showUndo({
         message: `CARD DELETED`,
         undo: async () => {
@@ -743,7 +794,7 @@ function FlashcardsContent() {
 
       {/* ═══════════════ REVIEW MODE ═══════════════ */}
       {mode === "review" && (
-        !selectedBundle && !allDue ? (
+        !selectedBundle && !allDue && !topicParam ? (
           /* Bundle overview when ALL BUNDLES is selected */
           <div className="space-y-8">
             <p className="text-sm text-muted-fg uppercase tracking-widest">
@@ -1132,6 +1183,31 @@ function FlashcardsContent() {
                         <span className={cn("h-2 w-2 rounded-full", status.dot)} />
                         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-fg">{status.label}</span>
                       </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditCard(card);
+                            setEditFront(card.front);
+                            setEditBack(card.back);
+                            setEditDesc(card.description ?? "");
+                            setEditTags(card.tags?.map((t) => t.tag.name) ?? []);
+                          }}
+                          aria-label="Edit card"
+                          title="Edit"
+                          className="p-1.5 text-muted-fg transition-colors hover:bg-accent hover:text-accent-fg"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(card); }}
+                          aria-label="Delete card"
+                          title="Delete"
+                          className="p-1.5 text-muted-fg transition-colors hover:bg-danger hover:text-on-color"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
                     <div
                       className="flex flex-1 cursor-pointer items-center justify-center text-center"
@@ -1231,11 +1307,11 @@ function FlashcardsContent() {
               <p className="mt-2 text-xs font-bold uppercase tracking-widest text-muted-fg">DAY STREAK</p>
             </div>
             <div className="border-2 border-border bg-bg p-6 text-center">
-              <p className="text-4xl font-bold uppercase tracking-tighter">{totalReviewed}</p>
+              <p className="text-4xl font-bold uppercase tracking-tighter">{reviewsToday}</p>
               <p className="mt-2 text-xs font-bold uppercase tracking-widest text-muted-fg">REVIEWS TODAY</p>
             </div>
             <div className="border-2 border-border bg-bg p-6 text-center">
-              <p className="text-4xl font-bold uppercase tracking-tighter text-success">{leechCards.length}</p>
+              <p className="text-4xl font-bold uppercase tracking-tighter text-success">{statsLeechCount}</p>
               <p className="mt-2 text-xs font-bold uppercase tracking-widest text-muted-fg">LEECHES</p>
             </div>
           </div>
@@ -1347,6 +1423,10 @@ function FlashcardsContent() {
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">DESCRIPTION (OPTIONAL)</label>
               <Input placeholder="OPTIONAL HINT OR CONTEXT SHOWN WITH THE CARD" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">TAGS</label>
+              <TagInput tags={editTags} onChange={setEditTags} />
             </div>
             <div className="flex justify-end gap-4 pt-4">
               <Button variant="ghost" onClick={() => setEditCard(null)}>CANCEL</Button>

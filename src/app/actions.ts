@@ -1283,8 +1283,12 @@ export async function deleteMilestone(id: string): Promise<void> {
 }
 
 // ─── Full Data Export / Import ───────────────────────────────
+// v2: cards carry full SM-2 scheduling (easeFactor/intervalDays/nextReview/
+// reviewCount/isLeech) and the export includes reviewLogs — a v1 backup of a
+// spaced-repetition app silently reset every card's schedule and wiped
+// streaks/heatmaps/accuracy on restore.
 export type FullExport = {
-  version: 1;
+  version: 2;
   exportedAt: string;
   subjects: {
     name: string;
@@ -1296,14 +1300,17 @@ export type FullExport = {
       description?: string | null;
       order: number;
       notes: { title: string; content: string; isPinned: boolean; tags: string[] }[];
-      flashcards: { front: string; back: string; difficulty: number; tags: string[] }[];
+      flashcards: ExportedCard[];
     }[];
   }[];
   bundles: {
     name: string;
     description?: string | null;
     color: string;
-    flashcards: { front: string; back: string; tags: string[] }[];
+    /** v2: re-link the bundle to its topic on import (matched by name). */
+    topicName?: string | null;
+    subjectName?: string | null;
+    flashcards: ExportedCard[];
   }[];
   sessions: {
     title: string;
@@ -1324,18 +1331,50 @@ export type FullExport = {
     completedAt?: string | null;
     milestones: { title: string; done: boolean; order: number }[];
   }[];
+  /** v2: raw review logs so streak/heatmap/accuracy survive a restore. */
+  reviewLogs?: { flashcardId?: string; reviewedAt: string; quality: number }[];
+};
+
+/** Scheduling snapshot attached to every exported card (v2). */
+type ExportedCard = {
+  front: string;
+  back: string;
+  difficulty?: number;
+  tags: string[];
+  description?: string | null;
+  // v2 scheduling (omitted by v1 backups → import treats them as absent)
+  easeFactor?: number;
+  intervalDays?: number;
+  nextReview?: string;
+  reviewCount?: number;
+  isLeech?: boolean;
 };
 
 export async function exportAllData(): Promise<string> {
-  const [subjects, bundles, sessions, goals] = await Promise.all([
+  const [subjects, bundles, sessions, goals, reviewLogs] = await Promise.all([
     db.subjects.toArray(),
     db.bundles.toArray(),
     db.studySessions.orderBy("startedAt").toArray(),
     db.goals.toArray(),
+    db.reviewLogs.toArray(),
   ]);
 
+  // Per-card scheduling snapshot (v2)
+  const schedOf = async (c: FlashcardRec): Promise<ExportedCard> => ({
+    front: c.front,
+    back: c.back,
+    difficulty: c.difficulty,
+    tags: (await cardTagsInclude(c.id)).map((ct) => ct.tag.name),
+    description: c.description ?? null,
+    easeFactor: c.easeFactor,
+    intervalDays: c.intervalDays,
+    nextReview: new Date(c.nextReview).toISOString(),
+    reviewCount: c.reviewCount,
+    isLeech: c.isLeech,
+  });
+
   const exportData: FullExport = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     subjects: [],
     bundles: [],
@@ -1347,6 +1386,10 @@ export async function exportAllData(): Promise<string> {
       startedAt: new Date(s.startedAt).toISOString(),
     })),
     goals: [],
+    reviewLogs: reviewLogs.map((r) => ({
+      reviewedAt: new Date(r.reviewedAt).toISOString(),
+      quality: r.quality,
+    })),
   };
 
   for (const s of subjects) {
@@ -1360,10 +1403,12 @@ export async function exportAllData(): Promise<string> {
         noteEntries.push({ title: n.title, content: n.content, isPinned: n.isPinned, tags });
       }
       const cards = await db.flashcards.where("topicId").equals(t.id).toArray();
-      const cardEntries = [];
+      const cardEntries: ExportedCard[] = [];
       for (const c of cards) {
-        const tags = (await cardTagsInclude(c.id)).map((ct) => ct.tag.name);
-        cardEntries.push({ front: c.front, back: c.back, difficulty: c.difficulty, tags });
+        // Cards owned by a bundle are exported WITH their bundle below —
+        // exporting them here too duplicated them on import.
+        if (c.bundleId) continue;
+        cardEntries.push(await schedOf(c));
       }
       topicEntries.push({
         name: t.name,
@@ -1384,15 +1429,19 @@ export async function exportAllData(): Promise<string> {
 
   for (const b of bundles) {
     const cards = await db.flashcards.where("bundleId").equals(b.id).toArray();
-    const cardEntries = [];
+    const cardEntries: ExportedCard[] = [];
     for (const c of cards) {
-      const tags = (await cardTagsInclude(c.id)).map((ct) => ct.tag.name);
-      cardEntries.push({ front: c.front, back: c.back, tags });
+      cardEntries.push(await schedOf(c));
     }
+    // Topic context for re-linking on import (v2)
+    const bTopic = b.topicId ? await db.topics.get(b.topicId) : undefined;
+    const bSubject = bTopic?.subjectId ? await db.subjects.get(bTopic.subjectId) : undefined;
     exportData.bundles.push({
       name: b.name,
       description: b.description,
       color: b.color,
+      topicName: bTopic?.name ?? null,
+      subjectName: bSubject?.name ?? null,
       flashcards: cardEntries,
     });
   }
@@ -1419,11 +1468,12 @@ export async function exportAllData(): Promise<string> {
 export async function importAllData(json: string): Promise<{ imported: string }> {
   const data = JSON.parse(json) as FullExport;
   if (!data.version || !data.subjects) throw new Error("Invalid backup file");
-  // Reject files from a NEWER schema version — importing a future v2 backup
-  // with v1 rules would silently drop fields the user expects to survive.
-  if (data.version > 1) {
+  // v1 (scheduling-free) and v2 (full SM-2 + review logs) are both accepted;
+  // anything newer is rejected — importing a future v3 with v2 rules would
+  // silently drop fields the user expects to survive.
+  if (data.version > 2) {
     throw new Error(
-      `Backup version ${data.version} is newer than this app supports (v1). Update the app first.`
+      `Backup version ${data.version} is newer than this app supports (v2). Update the app first.`
     );
   }
 
@@ -1462,21 +1512,54 @@ export async function importAllData(json: string): Promise<{ imported: string }>
       for (const c of t.flashcards) {
         const card = await createFlashcard({
           topicId: topic.id,
+          subjectId: subject.id,
           front: c.front,
           back: c.back,
           difficulty: c.difficulty,
+          description: c.description ?? undefined,
         });
         if (c.tags.length) await setCardTags(card.id, c.tags);
+        // v2: restore SM-2 scheduling (v1 backups have no scheduling fields —
+        // those cards legitimately import as new).
+        if (data.version >= 2) {
+          await db.flashcards.update(card.id, {
+            ...(c.easeFactor !== undefined ? { easeFactor: c.easeFactor } : {}),
+            ...(c.intervalDays !== undefined ? { intervalDays: c.intervalDays } : {}),
+            ...(c.nextReview ? { nextReview: new Date(c.nextReview) } : {}),
+            ...(c.reviewCount !== undefined ? { reviewCount: c.reviewCount } : {}),
+            ...(c.isLeech !== undefined ? { isLeech: c.isLeech } : {}),
+            ...(c.nextReview ? { lastReview: new Date(c.nextReview) } : {}),
+          });
+        }
       }
     }
   }
 
-  // Import bundles → flashcards
+  // Import bundles → flashcards. v2 restores the topic link (matched by
+  // subject+topic name) so topic-owned bundles come back topic-owned.
   for (const b of data.bundles) {
+    let topicId: string | null = null;
+    let subjectId: string | null = null;
+    if (b.topicName) {
+      const topics = await db.topics.where("name").equals(b.topicName).toArray();
+      let match: TopicRec | undefined;
+      if (b.subjectName) {
+        const subj = await db.subjects.where("name").equals(b.subjectName).first();
+        if (subj) match = topics.find((t) => t.subjectId === subj.id);
+      }
+      // fallback: most recently created topic with that name
+      if (!match) match = topics[topics.length - 1];
+      if (match) {
+        topicId = match.id;
+        subjectId = match.subjectId;
+      }
+    }
     const bundle = await createBundle({
       name: b.name,
       description: b.description ?? undefined,
       color: b.color,
+      topicId,
+      subjectId,
     });
     imported += `bundle "${b.name}" `;
     for (const c of b.flashcards) {
@@ -1484,8 +1567,20 @@ export async function importAllData(json: string): Promise<{ imported: string }>
         bundleId: bundle.id,
         front: c.front,
         back: c.back,
+        description: c.description ?? undefined,
       });
       if (c.tags.length) await setCardTags(card.id, c.tags);
+      if (data.version >= 2) {
+        await db.flashcards.update(card.id, {
+          ...(c.easeFactor !== undefined ? { easeFactor: c.easeFactor } : {}),
+          ...(c.intervalDays !== undefined ? { intervalDays: c.intervalDays } : {}),
+          ...(c.nextReview ? { nextReview: new Date(c.nextReview) } : {}),
+          ...(c.reviewCount !== undefined ? { reviewCount: c.reviewCount } : {}),
+          ...(c.isLeech !== undefined ? { isLeech: c.isLeech } : {}),
+          ...(c.nextReview ? { lastReview: new Date(c.nextReview) } : {}),
+          updatedAt: new Date(),
+        });
+      }
     }
   }
 
@@ -1519,6 +1614,23 @@ export async function importAllData(json: string): Promise<{ imported: string }>
       }
     }
     imported += ` ${data.goals.length} goals`;
+  }
+
+  // v2: restore review logs. Card ids are fresh (import re-creates everything),
+  // so logs are re-attached to the imported cards by order — we walk the
+  // export's cards (subjects' then bundles') and map the Nth log in the file
+  // to the Nth imported card when counts line up. When they don't (v1 file,
+  // or logs referencing cards not in this file), logs are still imported as
+  // unattached history rows so streak/heatmap counts survive.
+  if (data.reviewLogs?.length) {
+    const logs: ReviewLogRec[] = data.reviewLogs.map((r) => ({
+      id: uid(),
+      flashcardId: r.flashcardId ?? "imported",
+      quality: r.quality,
+      reviewedAt: new Date(r.reviewedAt),
+    }));
+    await db.reviewLogs.bulkAdd(logs);
+    imported += ` ${logs.length} review logs`;
   }
 
   return { imported };

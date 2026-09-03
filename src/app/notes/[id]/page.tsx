@@ -5,14 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Pencil, Trash2, Pin, StickyNote, BookOpen, Calendar } from "lucide-react";
 import Link from "next/link";
 import { Button, Skeleton } from "@/components/ui";
-import { RevealHeading } from "@/components/reveal-heading";
-import { Input, Textarea } from "@/components/ui";
 import { Modal } from "@/components/ui";
 import { TagInput } from "@/components/tag-input";
 import { Markdown } from "@/components/markdown";
 import { NoteAiImportButton } from "@/components/note-ai-import-button";
 import { getAllNotes, updateNote, deleteNote, getBundles } from "@/app/actions";
-import { readableOn } from "@/lib/utils";
 import { showUndo } from "@/components/undo-toast";
 import type { BundleRec } from "@/lib/db";
 
