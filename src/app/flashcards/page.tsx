@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from "react";
 import { Brain, Zap, Plus, Pencil, Trash2, Layers, BarChart3, AlertTriangle, Timer, Download, Upload, Wifi, WifiOff, Search, CheckSquare, Square, Tag, ArrowRight } from "lucide-react";
@@ -69,20 +69,20 @@ function FlashcardsContent() {
   const router = useRouter();
   const bundleParam = searchParams.get("bundle");
 
-  // ─── Core state ─────────────────────────────────────────────
+  // â”€â”€â”€ Core state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [mode, setMode] = useState<"review" | "browse" | "leeches" | "stats">("review");
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [selectedBundle, setSelectedBundle] = useState(bundleParam || "");
   const allDueParam = searchParams.get("all") === "1";
-  // Derived from the URL (?all=1) — the old setAllDue was never called, which
+  // Derived from the URL (?all=1) â€” the old setAllDue was never called, which
   // froze Study All Due at its mount-time value.
   const allDue = allDueParam;
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loaded, setLoaded] = useState(false);
-  // wall clock — captured once in the mount effect (react-hooks/purity bans Date.now() in render)
+  // wall clock â€” captured once in the mount effect (react-hooks/purity bans Date.now() in render)
   const [nowMs, setNowMs] = useState(0);
 
-  // ─── Review state ───────────────────────────────────────────
+  // â”€â”€â”€ Review state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [dueCards, setDueCards] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -94,7 +94,7 @@ function FlashcardsContent() {
   const [sprintTimer, setSprintTimer] = useState(5);
   const sprintRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ─── Auto study-session logging ────────────────────────────
+  // â”€â”€â”€ Auto study-session logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Accumulates reviews for the current run; logged as a StudySession
   // when the review queue is exhausted (run complete).
   const sessionRef = useRef<{ reviewed: number; correct: number; startedAt: number }>({
@@ -104,11 +104,11 @@ function FlashcardsContent() {
   });
   const sessionLoggedRef = useRef(false);
 
-  // ─── Leech state ────────────────────────────────────────────
+  // â”€â”€â”€ Leech state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [leechCards, setLeechCards] = useState<(Flashcard & { bundle: { id: string; name: string } | null })[]>([]);
   const [leechLoaded, setLeechLoaded] = useState(false);
 
-  // ─── Browse-all (search across all bundles) ───────────────
+  // â”€â”€â”€ Browse-all (search across all bundles) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [browseCards, setBrowseCards] = useState<ManagedFlashcard[]>([]);
   const [browseBundles, setBrowseBundles] = useState<Bundle[]>([]);
   const [browseLoaded, setBrowseLoaded] = useState(false);
@@ -149,12 +149,12 @@ function FlashcardsContent() {
     );
   }, [browseBundles, browseQuery]);
 
-  // ─── Stats state ────────────────────────────────────────────
+  // â”€â”€â”€ Stats state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [heatmap, setHeatmap] = useState<{ date: string; count: number }[]>([]);
   const [streak, setStreak] = useState(0);
   const [statsLoaded, setStatsLoaded] = useState(false);
 
-  // ─── Create modal ───────────────────────────────────────────
+  // â”€â”€â”€ Create modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState("");
   const [front, setFront] = useState("");
@@ -162,7 +162,7 @@ function FlashcardsContent() {
   const [desc, setDesc] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // ─── Edit/Delete modal ──────────────────────────────────────
+  // â”€â”€â”€ Edit/Delete modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [editCard, setEditCard] = useState<ManagedFlashcard | null>(null);
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
@@ -171,17 +171,17 @@ function FlashcardsContent() {
   const [deleteTarget, setDeleteTarget] = useState<ManagedFlashcard | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // ─── Edit Bundle (from flashcards page) ────────────────────
+  // â”€â”€â”€ Edit Bundle (from flashcards page) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [editBundleOpen, setEditBundleOpen] = useState(false);
   const [editBundleName, setEditBundleName] = useState("");
   const [editBundleDesc, setEditBundleDesc] = useState("");
   const [editBundleColor, setEditBundleColor] = useState("#DFE104");
   const [savingBundle, setSavingBundle] = useState(false);
 
-  // ─── Offline sync ───────────────────────────────────────────
+  // â”€â”€â”€ Offline sync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { online, pending, reviewCard } = useOfflineSync();
 
-  // ─── Confetti ───────────────────────────────────────────────
+  // â”€â”€â”€ Confetti â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const triggerConfetti = useCallback(() => {
     const colors = ["#DFE104", "#22C55E", "#3B82F6", "#EF4444", "#EC4899"];
     const container = document.createElement("div");
@@ -200,7 +200,7 @@ function FlashcardsContent() {
     setTimeout(() => container.remove(), 2500);
   }, []);
 
-  // ─── Data loading ───────────────────────────────────────────
+  // â”€â”€â”€ Data loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     Promise.all([getBundles(), getSubjects()]).then(([b, s]) => {
       setBundles(b);
@@ -217,7 +217,7 @@ function FlashcardsContent() {
     setNowMs(Date.now());
   }, []);
 
-  // ─── Review queue loader — runs on mount AND whenever the bundle context
+  // â”€â”€â”€ Review queue loader â€” runs on mount AND whenever the bundle context
   // changes (dropdown select, ?bundle=, ?all=1). Resets run state so switching
   // bundles can no longer keep serving the previous bundle's cards while the
   // header/ADD CARD/export point at the new one.
@@ -226,7 +226,7 @@ function FlashcardsContent() {
     (async () => {
       let cards: Flashcard[];
       if (!selectedBundle && !allDue) {
-        cards = []; // bundle-overview view — nothing to serve
+        cards = []; // bundle-overview view â€” nothing to serve
       } else if (allDue) {
         // Study All Due: due queue across every bundle
         cards = (await getAllDueFlashcards()) as Flashcard[];
@@ -298,7 +298,7 @@ function FlashcardsContent() {
     if (browseLoaded) await loadBrowseAll();
   }, [selectedBundle, browseLoaded, loadBrowseAll]);
 
-  // ─── Review handlers ────────────────────────────────────────
+  // â”€â”€â”€ Review handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Serve the main due queue first; once it's exhausted, serve the
   // same-session relearning queue (cards rated AGAIN / HARD).
   const activeCard = dueCards[currentIndex] ?? learningQueue[0] ?? null;
@@ -336,10 +336,10 @@ function FlashcardsContent() {
             setDueCards([]);
           }
         } else if (quality >= 3) {
-          // Relearn queue: remembered → clear the card
+          // Relearn queue: remembered â†’ clear the card
           setLearningQueue((prev) => prev.slice(1));
         } else {
-          // Relearn queue: lapsed again → send it to the back
+          // Relearn queue: lapsed again â†’ send it to the back
           setLearningQueue((prev) => [...prev.slice(1), prev[0]]);
         }
         setIsFlipped(false);
@@ -355,7 +355,7 @@ function FlashcardsContent() {
     [activeCard, reviewing, currentIndex, dueCards, reviewCard, fetchMoreDue, triggerConfetti]
   );
 
-  // ─── Speed Sprint timer ─────────────────────────────────────
+  // â”€â”€â”€ Speed Sprint timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (sprintMode && isFlipped && activeCard) {
       setSprintTimer(5); // eslint-disable-line react-hooks/set-state-in-effect
@@ -375,14 +375,14 @@ function FlashcardsContent() {
     }
   }, [sprintMode, isFlipped, activeCard, handleReview]);
 
-  // ─── Keyboard handler ─────────────────────────────────────
+  // â”€â”€â”€ Keyboard handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
 
-      // Review keys only apply in review mode — in browse/leeches/stats they
+      // Review keys only apply in review mode â€” in browse/leeches/stats they
       // used to silently submit SRS ratings for an off-screen card and
       // preventDefault() Space/Enter (breaking scroll and UI shortcuts).
       if (mode !== "review") return;
@@ -406,7 +406,7 @@ function FlashcardsContent() {
     if (mode === "browse" && !browseLoaded) loadBrowseAll(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [mode, browseLoaded, loadBrowseAll]);
 
-  // ─── Leech data ─────────────────────────────────────────────
+  // â”€â”€â”€ Leech data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadLeeches = useCallback(async () => {
     const cards = await getLeechCards(selectedBundle || undefined);
     setLeechCards(cards);
@@ -417,7 +417,7 @@ function FlashcardsContent() {
     if (mode === "leeches" && !leechLoaded) loadLeeches(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [mode, leechLoaded, loadLeeches]);
 
-  // ─── Stats data ─────────────────────────────────────────────
+  // â”€â”€â”€ Stats data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadStats = useCallback(async () => {
     const [h, s] = await Promise.all([getHeatmapData(), getStreak()]);
     setHeatmap(h);
@@ -429,7 +429,7 @@ function FlashcardsContent() {
     if (mode === "stats" && !statsLoaded) loadStats(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [mode, statsLoaded, loadStats]);
 
-  // ─── Create/Save handlers ──────────────────────────────────
+  // â”€â”€â”€ Create/Save handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleCreate = async () => {
     if (!front.trim() || !back.trim()) return;
     setCreating(true);
@@ -484,7 +484,7 @@ function FlashcardsContent() {
       showUndo({
         message: `CARD DELETED`,
         undo: async () => {
-          // Restore the exact card (same id, SM-2 state, tags, links) —
+          // Restore the exact card (same id, SM-2 state, tags, links) â€”
           // recreating it fresh would silently reset its scheduling.
           if (cardSnapshot) await restoreFlashcard(cardSnapshot, tagLinks);
           await loadDueCards();
@@ -495,7 +495,7 @@ function FlashcardsContent() {
     }
   };
 
-  // ─── Batch operations ─────────────────────────────────────
+  // â”€â”€â”€ Batch operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const allBrowseSelected = browseFilteredCards.length > 0 && browseFilteredCards.every((c) => browseSelected.has(c.id));
   const toggleBrowseSelectAll = () => {
     if (allBrowseSelected) {
@@ -541,7 +541,7 @@ function FlashcardsContent() {
 
   const totalDue = dueCards.length + learningQueue.length;
 
-  // ─── Auto-log study session when the review run is finished ──
+  // â”€â”€â”€ Auto-log study session when the review run is finished â”€â”€
   // Fires once when the run completes: the SESSION COMPLETE screen is
   // shown (totalDue === 0 && completedCount > 0). Stats were accumulated
   // in sessionRef during the run.
@@ -558,7 +558,7 @@ function FlashcardsContent() {
         ? Math.round((sessionRef.current.correct / sessionRef.current.reviewed) * 100)
         : 0;
       createStudySession({
-        title: `Flashcard run — ${sessionRef.current.reviewed} reviewed`,
+        title: `Flashcard run â€” ${sessionRef.current.reviewed} reviewed`,
         durationMin: mins,
         notes: `Accuracy: ${acc}%`,
         completed: true,
@@ -580,7 +580,7 @@ function FlashcardsContent() {
 
       {/* Toolbar */}
       <div className="mb-8 space-y-4 border-b-2 border-border pb-4">
-        {/* Row 1 — Primary: bundle context + main action */}
+        {/* Row 1 â€” Primary: bundle context + main action */}
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedBundle}
@@ -617,11 +617,11 @@ function FlashcardsContent() {
             onClick={() => router.push("/bundles")}
             className="ml-auto py-2 text-xs font-bold uppercase tracking-widest text-muted-fg hover:text-accent"
           >
-            MANAGE BUNDLES →
+            MANAGE BUNDLES â†’
           </button>
         </div>
 
-        {/* Row 2 — Secondary: edit/import/export + mode tabs + status */}
+        {/* Row 2 â€” Secondary: edit/import/export + mode tabs + status */}
         <div className="flex flex-wrap items-center gap-4">
           {selectedBundle && (
             <div className="flex flex-wrap items-center gap-3">
@@ -656,7 +656,7 @@ function FlashcardsContent() {
                     setTimeout(() => URL.revokeObjectURL(url), 1000);
                   } catch (e) {
                     console.error("Export failed", e);
-                    alert("EXPORT FAILED — SEE CONSOLE");
+                    alert("EXPORT FAILED â€” SEE CONSOLE");
                   }
                 }}
                 className="text-xs font-bold uppercase tracking-widest text-muted-fg hover:text-fg"
@@ -709,7 +709,7 @@ function FlashcardsContent() {
             {online ? (pending > 0 ? `SYNCING ${pending}` : "ONLINE") : `OFFLINE (${pending} QUEUED)`}
           </div>
 
-          {/* Mode tabs — sliding accent underline */}
+          {/* Mode tabs â€” sliding accent underline */}
           <div className="flex gap-1 overflow-x-auto rounded-xl border-2 border-border bg-muted/40 p-1">
             {(["review", "browse", "leeches", "stats"] as const).map((m) => (
               <button
@@ -740,7 +740,7 @@ function FlashcardsContent() {
         </div>
       </div>
 
-      {/* ═══════════════ REVIEW MODE ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• REVIEW MODE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {mode === "review" && (
         !selectedBundle && !allDue ? (
           /* Bundle overview when ALL BUNDLES is selected */
@@ -767,7 +767,7 @@ function FlashcardsContent() {
                     key={bundle.id}
                     onClick={() => setSelectedBundle(bundle.id)}
                     {...spotlightProps()}
-                    className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_14px_35px_-15px_rgba(0,0,0,0.7)] text-left"
+                    className="spotlight-card group relative flex h-48 w-full flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_14px_35px_-15px_rgba(0,0,0,0.7)] text-left"
                     style={{ backgroundImage: `radial-gradient(140% 120% at 0% 0%, ${(bundle.color || "#DFE104")}14, transparent 55%)` }}
                   >
                     <div
@@ -798,7 +798,7 @@ function FlashcardsContent() {
                         {bundle._count.flashcards} CARD{bundle._count.flashcards !== 1 ? "S" : ""}
                       </span>
                       <span className="text-xs font-bold text-yellow-400 group-hover:underline">
-                        Open →
+                        Open â†’
                       </span>
                     </div>
                   </button>
@@ -838,7 +838,7 @@ function FlashcardsContent() {
                 onClick={() => {
                   setCompletedCount(0);
                   setTotalReviewed(0);
-                  // Allow the next run to auto-log its own study session —
+                  // Allow the next run to auto-log its own study session â€”
                   // this ref previously stayed true forever, so only the
                   // first run per page load was ever logged.
                   sessionLoggedRef.current = false;
@@ -857,10 +857,10 @@ function FlashcardsContent() {
           <div className="mx-auto max-w-2xl space-y-6">
             {/* Session stats bar */}
             <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest text-muted-fg">
-              <span>{completedCount} REVIEWED • {totalReviewed} TOTAL</span>
+              <span>{completedCount} REVIEWED â€¢ {totalReviewed} TOTAL</span>
               <div className="flex gap-3">
                 {learningQueue.length > 0 && (
-                  <Badge variant="warning">RELEARNING × {learningQueue.length}</Badge>
+                  <Badge variant="warning">RELEARNING Ã— {learningQueue.length}</Badge>
                 )}
                 <Badge variant="success"><Zap size={12} className="mr-1" />{totalDue} IN QUEUE</Badge>
               </div>
@@ -893,7 +893,7 @@ function FlashcardsContent() {
               )}
             </div>
 
-            {/* Card — true 3D flip: question face and answer face are real
+            {/* Card â€” true 3D flip: question face and answer face are real
                 card faces rotating on rotateY; shape is rounded/layered with
                 a corner index instead of the old flat color-swap rectangle. */}
             {activeCard && (
@@ -904,7 +904,7 @@ function FlashcardsContent() {
                 aria-label={isFlipped ? "Show question" : "Reveal answer"}
               >
                 <div className="flip-card relative min-h-[440px] sm:min-h-[500px]" data-flipped={isFlipped}>
-                  {/* ── FRONT — QUESTION ── */}
+                  {/* â”€â”€ FRONT â€” QUESTION â”€â”€ */}
                   <div className="flip-face absolute inset-0 flex flex-col overflow-hidden rounded-2xl border-2 border-border bg-zinc-900/60 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.8)]">
                     <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent to-transparent" />
                     <div className="flex items-center justify-between px-7 pt-5">
@@ -922,7 +922,7 @@ function FlashcardsContent() {
                     <div className="flex flex-1 flex-col items-center justify-center px-10 pb-4 text-center">
                       {activeCard.topic && (
                         <p className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted-fg/70">
-                          {activeCard.topic.subject?.name ?? "GENERAL"} › {activeCard.topic.name}
+                          {activeCard.topic.subject?.name ?? "GENERAL"} â€º {activeCard.topic.name}
                         </p>
                       )}
                       <div className="text-3xl font-bold uppercase leading-relaxed tracking-tight sm:text-4xl">
@@ -938,7 +938,7 @@ function FlashcardsContent() {
                     </div>
                   </div>
 
-                  {/* ── BACK — ANSWER ── */}
+                  {/* â”€â”€ BACK â€” ANSWER â”€â”€ */}
                   <div className="flip-face flip-back absolute inset-0 flex flex-col overflow-hidden rounded-2xl border-2 border-accent bg-accent shadow-[0_18px_50px_-12px_rgba(250,204,21,0.25)]">
                     <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent-fg/60 to-transparent" />
                     <div className="flex items-center justify-between px-7 pt-5">
@@ -983,13 +983,13 @@ function FlashcardsContent() {
             )}
 
             <p className="text-center text-xs text-muted-fg uppercase tracking-widest">
-              SPACE: FLIP • 1-3: RATE
+              SPACE: FLIP â€¢ 1-3: RATE
             </p>
           </div>
         )
       )}
 
-      {/* ═══════════════ BROWSE ALL MODE ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• BROWSE ALL MODE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {mode === "browse" && (
         <div className="space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -1062,7 +1062,7 @@ function FlashcardsContent() {
                   key={bundle.id}
                   onClick={() => router.push(`/bundles/${bundle.id}/cards`)}
                   {...spotlightProps()}
-                  className="spotlight-card group relative flex h-48 w-full max-w-xs flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_14px_35px_-15px_rgba(0,0,0,0.7)]"
+                  className="spotlight-card group relative flex h-48 w-full flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-yellow-400/50 hover:bg-zinc-900 hover:shadow-[0_14px_35px_-15px_rgba(0,0,0,0.7)]"
                   style={{ backgroundImage: `radial-gradient(140% 120% at 0% 0%, ${(bundle.color || "#DFE104")}14, transparent 55%)` }}
                 >
                   <div
@@ -1090,7 +1090,7 @@ function FlashcardsContent() {
                     >
                       {bundle._count.flashcards} CARD{bundle._count.flashcards !== 1 ? "S" : ""}
                     </span>
-                    <span className="text-xs font-bold text-yellow-400 group-hover:underline">Open →</span>
+                    <span className="text-xs font-bold text-yellow-400 group-hover:underline">Open â†’</span>
                   </div>
                 </button>
               ))}
@@ -1151,7 +1151,7 @@ function FlashcardsContent() {
                           {card.bundle.name}
                         </span>
                       ) : card.topic ? (
-                        <span>{card.topic.subject?.name ?? "GENERAL"} › {card.topic.name}</span>
+                        <span>{card.topic.subject?.name ?? "GENERAL"} â€º {card.topic.name}</span>
                       ) : <span />}
                     </div>
                   </div>
@@ -1162,7 +1162,7 @@ function FlashcardsContent() {
         </div>
       )}
 
-      {/* ═══════════════ LEECHES MODE ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• LEECHES MODE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {mode === "leeches" && (
         <div className="space-y-6">
           <div className="border-2 border-danger bg-danger/5 p-4">
@@ -1187,7 +1187,7 @@ function FlashcardsContent() {
                   <div className="flex-1">
                     <p className="text-sm font-bold uppercase tracking-tight">{card.front}</p>
                     <p className="text-xs text-muted-fg uppercase tracking-widest">
-                      {card.bundle?.name ?? "NO BUNDLE"} • {card.consecutiveAgain}× AGAIN
+                      {card.bundle?.name ?? "NO BUNDLE"} â€¢ {card.consecutiveAgain}Ã— AGAIN
                     </p>
                   </div>
                   <Button size="sm" variant="secondary" onClick={async () => { await unLeechCard(card.id); setLeechCards((prev) => prev.filter((c) => c.id !== card.id)); }}>
@@ -1200,7 +1200,7 @@ function FlashcardsContent() {
         </div>
       )}
 
-      {/* ═══════════════ STATS MODE ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• STATS MODE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {mode === "stats" && (
         <div className="space-y-8">
           {/* Streak + Summary */}
@@ -1226,7 +1226,7 @@ function FlashcardsContent() {
               {Array.from({ length: 90 }).map((_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() - (89 - i));
-                // Local-date key — matches getHeatmapData()/getStreak()
+                // Local-date key â€” matches getHeatmapData()/getStreak()
                 // bucketing (ISO/UTC shifted evening reviews to the next day
                 // in positive-offset timezones like UTC+3).
                 const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1254,7 +1254,7 @@ function FlashcardsContent() {
         </div>
       )}
 
-      {/* ═══════════════ CREATE MODAL ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• CREATE MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="NEW FLASHCARD">
         <div className="space-y-6">
           {!selectedBundle && (
@@ -1295,7 +1295,7 @@ function FlashcardsContent() {
               onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleCreate(); }}
             />
           </div>
-          <p className="text-[10px] text-muted-fg uppercase tracking-widest">⌘/CTRL + ENTER TO SAVE</p>
+          <p className="text-[10px] text-muted-fg uppercase tracking-widest">âŒ˜/CTRL + ENTER TO SAVE</p>
           <div className="flex justify-end gap-4 pt-4">
             <Button variant="ghost" onClick={() => setModalOpen(false)}>CANCEL</Button>
             <Button onClick={handleCreate} disabled={creating || !front.trim() || !back.trim()}>
@@ -1305,7 +1305,7 @@ function FlashcardsContent() {
         </div>
       </Modal>
 
-      {/* ═══════════════ EDIT MODAL ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• EDIT MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <Modal open={!!editCard} onClose={() => setEditCard(null)} title="EDIT FLASHCARD">
         {editCard && (
           <div className="space-y-6">
@@ -1337,7 +1337,7 @@ function FlashcardsContent() {
         )}
       </Modal>
 
-      {/* ═══════════════ DELETE MODAL ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• DELETE MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="DELETE FLASHCARD">
         {deleteTarget && (
           <div className="space-y-6">
@@ -1356,7 +1356,7 @@ function FlashcardsContent() {
         )}
       </Modal>
 
-      {/* ═══════════════ EDIT BUNDLE MODAL ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• EDIT BUNDLE MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <Modal open={editBundleOpen} onClose={() => setEditBundleOpen(false)} title="EDIT BUNDLE">
         <div className="space-y-6">
           <div className="space-y-2">
@@ -1404,7 +1404,7 @@ function FlashcardsContent() {
         </div>
       </Modal>
 
-      {/* ═══════════════ BATCH TAG MODAL ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• BATCH TAG MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <Modal open={batchTagModalOpen} onClose={() => setBatchTagModalOpen(false)} title="BATCH TAG CARDS">
         <div className="space-y-6">
           <p className="text-sm text-muted-fg">ADD TAGS TO {browseSelected.size} SELECTED CARD{browseSelected.size !== 1 ? "S" : ""}.</p>
@@ -1422,7 +1422,7 @@ function FlashcardsContent() {
         </div>
       </Modal>
 
-      {/* ═══════════════ BATCH MOVE MODAL ═══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• BATCH MOVE MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <Modal open={batchMoveModalOpen} onClose={() => setBatchMoveModalOpen(false)} title="BATCH MOVE CARDS">
         <div className="space-y-6">
           <p className="text-sm text-muted-fg">MOVE {browseSelected.size} SELECTED CARD{browseSelected.size !== 1 ? "S" : ""} TO A BUNDLE.</p>
