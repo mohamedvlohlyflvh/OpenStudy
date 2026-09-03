@@ -68,13 +68,8 @@ export function Card({ className, hover, glow, ...props }: CardProps) {
     <div
       className={cn(
         "glass rounded-2xl p-6 transition-all duration-300",
-        // Hover: lift + accent edge + soft glow. Descendant text switches to
-        // the accent color — text-accent is tuned for readability ON the theme
-        // bg in every theme (text-accent-fg is for text ON the accent fill and
-        // would be near-invisible here). Elements with their own bg-* keep
-        // their surface.
         hover &&
-          "cursor-pointer group hover:-translate-y-1 hover:scale-[1.01] hover:border-accent/40 hover:glow-accent hover:[&_*:not([class*='bg-'])]:text-accent",
+          "cursor-pointer group hover:-translate-y-1 hover:scale-[1.01] hover:border-accent/40 hover:glow-accent",
         glow && "border-accent/30 shadow-[0_0_48px_-16px_var(--color-accent-soft,var(--color-accent))]",
         className
       )}
