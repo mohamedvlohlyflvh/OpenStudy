@@ -181,10 +181,12 @@ function NotesContent() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus size={16} />
-              NEW NOTE
-            </Button>
+            {!(loaded && notes.length === 0) && (
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus size={16} />
+                NEW NOTE
+              </Button>
+            )}
           </div>
         </div>
         {/* Search */}

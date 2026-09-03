@@ -260,10 +260,12 @@ export default function SubjectsPage() {
               className="mt-4 text-sm text-muted-fg uppercase tracking-widest"
             />
           </div>
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus size={16} />
-            NEW SUBJECT
-          </Button>
+          {!(loaded && subjects.length === 0) && (
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus size={16} />
+              NEW SUBJECT
+            </Button>
+          )}
         </div>
       </div>
 

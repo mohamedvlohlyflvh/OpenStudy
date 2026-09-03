@@ -132,10 +132,12 @@ export default function BundlesPage() {
               className="mt-2 text-sm text-muted-fg uppercase tracking-widest"
             />
           </div>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus size={16} />
-            NEW BUNDLE
-          </Button>
+          {!(loaded && bundles.length === 0) && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus size={16} />
+              NEW BUNDLE
+            </Button>
+          )}
         </div>
       </div>
 
