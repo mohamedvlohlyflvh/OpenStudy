@@ -42,9 +42,6 @@ function NotesContent() {
   const [editContent, setEditContent] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
 
-  // View / Study state — full reading mode
-  const [viewNote, setViewNote] = useState<Note | null>(null);
-
   useEffect(() => {
     Promise.all([getAllNotes(), getSubjects(), getBundles()]).then(([n, s, b]) => {
       setNotes(n);
@@ -67,7 +64,6 @@ function NotesContent() {
       if (e.key === "Escape") {
         setModalOpen(false);
         setEditNote(null);
-        setViewNote(null);
       }
     };
     window.addEventListener("keydown", handler);
@@ -116,13 +112,9 @@ function NotesContent() {
     setNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isPinned: !isPinned } : n))
     );
-    // keep viewNote in sync if it's the pinned one
-    setViewNote((prev) => (prev?.id === id ? { ...prev, isPinned: !isPinned } : prev));
   };
 
   const handleDelete = (note: Note) => {
-    // close view if we delete the note being viewed
-    if (viewNote?.id === note.id) setViewNote(null);
     startTransition(async () => {
       await deleteNote(note.id);
       setNotes((prev) => prev.filter((n) => n.id !== note.id));
@@ -161,11 +153,6 @@ function NotesContent() {
     await updateNote(editNote.id, { title: editTitle.trim(), content: editContent.trim(), tags: editTags });
     const fresh = await getAllNotes();
     setNotes(fresh as Note[]);
-    // keep view in sync
-    if (viewNote?.id === editNote.id) {
-      const updated = (fresh as Note[]).find((n) => n.id === editNote.id);
-      if (updated) setViewNote(updated);
-    }
     setEditNote(null);
   };
 
@@ -250,7 +237,7 @@ function NotesContent() {
             return (
             <div
               key={note.id}
-              onClick={() => setViewNote(note)}
+              onClick={() => router.push("/notes/" + note.id)}
               {...spotlightProps()}
               className="spotlight-card group relative flex h-[320px] w-full flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 text-left transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-[0_18px_45px_-15px_rgba(0,0,0,0.5)] cursor-pointer"
               style={{ backgroundImage: `radial-gradient(140% 120% at 0% 0%, ${accent}14, transparent 55%)` }}
@@ -272,7 +259,7 @@ function NotesContent() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
-                    onClick={() => setViewNote(note)}
+                    onClick={() => router.push("/notes/" + note.id)}
                     aria-label="Study note"
                     title="Study"
                     className="p-2.5 text-zinc-400 hover:text-white transition-colors"
@@ -423,94 +410,7 @@ function NotesContent() {
           </div>
         )}
       </Modal>
-
-      {/* View / Study Modal — full reading experience */}
-      <Modal open={!!viewNote} onClose={() => setViewNote(null)} title={viewNote ? viewNote.title.toUpperCase() : "NOTE"}>
-        {viewNote && (
-          <div className="space-y-6">
-            {viewNote.topic && (
-              <p className="text-xs text-muted-fg uppercase tracking-widest">
-                {viewNote.topic.subject?.name && (
-                  <span
-                    className="mr-1 inline-block px-1.5 py-0.5 text-[10px] font-bold"
-                    style={{
-                      backgroundColor: viewNote.topic.subject.color,
-                      color: readableOn(viewNote.topic.subject.color),
-                    }}
-                  >
-                    {viewNote.topic.subject.name}
-                  </span>
-                )}
-                {viewNote.topic.subject?.name && " › "}
-                {viewNote.topic.name}
-                {viewNote.isPinned && <span className="ml-2 inline-flex items-center gap-1 text-accent"><Pin size={10} /> PINNED</span>}
-              </p>
-            )}
-            <div className="max-h-[55vh] overflow-y-auto rounded-2xl border-2 border-border bg-muted/10 p-6 text-sm leading-relaxed">
-              {viewNote.content ? (
-                <Markdown content={viewNote.content} className="prose prose-invert max-w-none" />
-              ) : (
-                <div className="flex flex-col items-center py-8 text-center">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-                    <StickyNote size={20} />
-                  </div>
-                  <p className="text-sm font-bold uppercase tracking-widest">NO CONTENT YET</p>
-                  <p className="mt-1 text-xs text-muted-fg">Edit this note to add study material</p>
-                  <Button
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => {
-                      const n = viewNote;
-                      setViewNote(null);
-                      setTimeout(() => openEdit(n), 150);
-                    }}
-                  >
-                    <Pencil size={14} /> EDIT NOTE
-                  </Button>
-                </div>
-              )}
-            </div>
-            {viewNote.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {viewNote.tags.map(({ tag }) => (
-                  <span
-                    key={tag.id}
-                    className="bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg"
-                  >
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-              <Button variant="ghost" onClick={() => setViewNote(null)}>
-                CLOSE
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const n = viewNote;
-                  setViewNote(null);
-                  setTimeout(() => openEdit(n), 150);
-                }}
-              >
-                <Pencil size={14} /> EDIT
-              </Button>
-              <div onClick={(e) => e.stopPropagation()}>
-                <NoteAiImportButton
-                  noteId={viewNote.id}
-                  noteTitle={viewNote.title}
-                  availableBundles={bundles}
-                />
-              </div>
-            </div>
-            <p className="text-center text-[10px] uppercase tracking-widest text-muted-fg">
-              <BookOpen size={10} className="mr-1 inline" /> STUDY MODE — READ, THEN IMPORT TO FLASHCARDS WITH AI IMPORT
-            </p>
-          </div>
-        )}
-      </Modal>
-    </div>
+</div>
   );
 }
 
