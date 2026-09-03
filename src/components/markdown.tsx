@@ -24,7 +24,7 @@ function renderInline(text: string): string {
   // escapeHtml, this closes the attribute-breakout XSS vector via card
   // content (front/back come from imports and pasted LLM output).
   s = s.replace(
-    /!\[([^\]]*)\]\((https?:\/\/[^\s)]+|\/[^\s)]*|\.\.?\/[^\s)]*|data:image\/[^\s)]+)\)/gi,
+    /!\[([^\]]*)\]\((https?:\/\/[^\s)]+|\/[^\)]*|\.\.?\/[^\s)]*|data:image\/[^\s)]+)\)/gi,
     '<img src="$2" alt="$1" class="md-img" style="max-width:100%;height:auto;border-radius:4px;" />'
   );
   // inline code
@@ -43,8 +43,14 @@ function renderInline(text: string): string {
 
 export function Markdown({ content, className }: { content: string; className?: string }): ReactNode {
   const hasArabic = /[\u0600-\u06FF]/.test(content ?? "");
-  const outerDir = hasArabic ? "rtl" as const : undefined;
-  const lines = (content ?? "").split(/\r?\n/);
+  const outerDir = hasArabic ? ("rtl" as const) : undefined;
+  // Normalize stray HTML breaks that would otherwise show as literal text
+  const normalized = (content ?? "")
+    .replace(/<\/?br\s*\/?>/gi, "\n")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/<\/?div[^>]*>/gi, "\n")
+    .replace(/<\/?p[^>]*>/gi, "\n");
+  const lines = normalized.split(/\r?\n/);
   const blocks: ReactNode[] = [];
   let i = 0;
   let key = 0;
@@ -154,5 +160,5 @@ export function Markdown({ content, className }: { content: string; className?: 
     );
   }
 
-  return <div dir={outerDir} className={className} style={hasArabic ? { unicodeBidi: "plaintext", textAlign: "right" } as React.CSSProperties : undefined}>{blocks.map((b, idx) => <Fragment key={idx}>{b}</Fragment>)}</div>;
+  return <div dir={outerDir} className={className} style={hasArabic ? ({ unicodeBidi: "plaintext", textAlign: "right" } as React.CSSProperties) : undefined}>{blocks.map((b, idx) => <Fragment key={idx}>{b}</Fragment>)}</div>;
 }
