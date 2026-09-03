@@ -13,6 +13,7 @@ import { Markdown } from "@/components/markdown";
 import { NoteAiImportButton } from "@/components/note-ai-import-button";
 import { showUndo } from "@/components/undo-toast";
 import { readableOn } from "@/lib/utils";
+import { spotlightProps } from "@/lib/interactions";
 import type { BundleRec } from "@/lib/db";
 
 type Note = Omit<Awaited<ReturnType<typeof getAllNotes>>[number], "topic"> & {
@@ -242,99 +243,110 @@ function NotesContent() {
           description="TRY A DIFFERENT SEARCH."
         />
       ) : (
-        <div className="grid gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
-          {filteredNotes.map((note) => (
-            <Card
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredNotes.map((note) => {
+            const accent = note.topic?.subject?.color || "#FF5E57";
+            const isPinned = note.isPinned;
+            return (
+            <div
               key={note.id}
-              hover
-              className="group relative flex cursor-pointer flex-col"
               onClick={() => setViewNote(note)}
+              {...spotlightProps()}
+              className="spotlight-card group relative flex h-[320px] w-full flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 text-left transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-[0_18px_45px_-15px_rgba(0,0,0,0.5)] cursor-pointer"
+              style={{ backgroundImage: `radial-gradient(140% 120% at 0% 0%, ${accent}14, transparent 55%)` }}
             >
-              <div className="mb-4 flex items-start justify-between">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-lg font-bold uppercase tracking-tight">
-                    {note.title}
-                  </h3>
-                  {note.topic && (
-                    <p className="mt-1 text-xs text-muted-fg uppercase tracking-widest">
-                      {note.topic.subject?.name && (
-                        <span
-                          className="mr-1 inline-block px-1.5 py-0.5 text-[10px] font-bold"
-                          style={{
-                            backgroundColor: note.topic.subject.color,
-                            color: readableOn(note.topic.subject.color),
-                          }}
-                        >
-                          {note.topic.subject.name}
-                        </span>
-                      )}
-                      {note.topic.subject?.name && " › "}
-                      {note.topic.name}
-                    </p>
-                  )}
+              {/* Header: icon + actions */}
+              <div className="flex items-start justify-between">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-xl text-lg font-black transition-transform duration-200 group-hover:scale-110"
+                  style={{
+                    backgroundColor: `${accent}1f`,
+                    color: accent,
+                    boxShadow: `inset 0 0 0 1px ${accent}3d`,
+                  }}
+                >
+                  {isPinned ? <Pin size={18} className="fill-current" /> : <StickyNote size={18} />}
                 </div>
                 <div
-                  className="flex shrink-0 gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+                  className="flex -mr-2 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
                     onClick={() => setViewNote(note)}
-                    className="p-2.5 text-muted hover:text-accent transition-colors"
-                    title="Study / view note"
                     aria-label="Study note"
+                    title="Study"
+                    className="p-2.5 text-zinc-400 hover:text-white transition-colors"
                   >
                     <Eye size={14} />
                   </button>
-                  <NoteAiImportButton
-                    noteId={note.id}
-                    noteTitle={note.title}
-                    availableBundles={bundles}
-                  />
                   <button
                     onClick={() => openEdit(note)}
-                    className="p-2.5 text-muted hover:text-accent transition-colors"
-                    title="Edit"
+                    aria-label="Edit"
+                    className="p-2.5 text-zinc-400 hover:text-white transition-colors"
                   >
                     <Pencil size={14} />
                   </button>
                   <button
                     onClick={() => handleTogglePin(note.id, note.isPinned)}
-                    className={`p-2.5 transition-colors ${
-                      note.isPinned ? "text-accent" : "text-muted hover:text-fg"
-                    }`}
-                    title={note.isPinned ? "Unpin" : "Pin"}
+                    aria-label={isPinned ? "Unpin" : "Pin"}
+                    className={`p-2.5 transition-colors ${isPinned ? "text-accent" : "text-zinc-400 hover:text-white"}`}
                   >
                     <Pin size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(note)}
-                    className="p-2.5 text-muted hover:text-danger transition-colors"
-                    title="Delete"
+                    aria-label="Delete"
+                    className="p-2.5 text-zinc-400 hover:text-red-400 transition-colors"
                   >
                     <Trash2 size={14} />
                   </button>
                 </div>
               </div>
-              <div className="flex-1 text-sm text-muted-fg line-clamp-6">
-                {note.content ? <Markdown content={note.content} /> : "NO CONTENT"}
+
+              {/* Content */}
+              <div className="mt-3 min-w-0 flex-1">
+                <h3 className="line-clamp-2 text-lg font-bold text-white transition-colors group-hover:text-accent">
+                  {note.title.toUpperCase()}
+                </h3>
+                {note.topic && (
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    {note.topic.subject?.name ? `${note.topic.subject.name} › ` : ""}
+                    {note.topic.name}
+                    {isPinned && <span className="ml-2 text-accent">· PINNED</span>}
+                  </p>
+                )}
+                <div className="mt-3 line-clamp-3 text-sm leading-relaxed text-zinc-400">
+                  {note.content ? <Markdown content={note.content} /> : <span className="italic text-zinc-500">NO CONTENT</span>}
+                </div>
               </div>
-              <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-accent opacity-0 transition-opacity group-hover:opacity-100">
-                CLICK TO STUDY →
-              </p>
-              {note.tags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {note.tags.map(({ tag }) => (
+
+              {/* Footer */}
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1">
+                  {note.tags.slice(0, 3).map(({ tag }) => (
                     <span
                       key={tag.id}
-                      className="bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg"
+                      className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400"
                     >
                       {tag.name}
                     </span>
                   ))}
+                  {note.tags.length > 3 && (
+                    <span className="px-1 text-[10px] font-bold text-zinc-500">+{note.tags.length - 3}</span>
+                  )}
                 </div>
-              )}
-            </Card>
-          ))}
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-zinc-500 group-hover:text-accent transition-colors">
+                  STUDY →
+                </span>
+              </div>
+
+              {/* AI Import — absolute subtle */}
+              <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                <NoteAiImportButton noteId={note.id} noteTitle={note.title} availableBundles={bundles} />
+              </div>
+            </div>
+            );
+          })}
         </div>
       )}
 
