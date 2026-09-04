@@ -196,7 +196,9 @@ function FlashcardsContent() {
   const { online, pending, reviewCard } = useOfflineSync();
 
   // ─── TTS (free browser speechSynthesis) ──────────────────────
-  const { ttsOn, toggle: toggleTts, speaking, speak, stop: stopTts, supported: ttsSupported } = useTts();
+  // Button-triggered only — no auto-read: each card face has a speaker
+  // button; the answer speaker reads back + description together.
+  const { speaking, speak, stop: stopTts, supported: ttsSupported } = useTts();
 
   // ─── Confetti ───────────────────────────────────────────────
   const triggerConfetti = useCallback(() => {
@@ -335,15 +337,6 @@ function FlashcardsContent() {
   // Serve the main due queue first; once it's exhausted, serve the
   // same-session relearning queue (cards rated AGAIN / HARD).
   const activeCard = dueCards[currentIndex] ?? learningQueue[0] ?? null;
-
-  // Auto-read the current card side when TTS is ON (must live AFTER
-  // activeCard's declaration — React effects read consts above them).
-  useEffect(() => {
-    if (!ttsOn || !activeCard) return;
-    if (sprintMode) return; // sprint mode: no audio distractions
-    speak(isFlipped ? activeCard.back : activeCard.front);
-    return () => stopTts();
-  }, [ttsOn, activeCard, isFlipped, sprintMode, speak, stopTts]);
 
   const handleReview = useCallback(
     async (quality: number) => {
@@ -764,28 +757,9 @@ function FlashcardsContent() {
             </div>
           )}
 
-          {ttsSupported && (
-            <button
-              type="button"
-              onClick={toggleTts}
-              aria-pressed={ttsOn}
-              title={ttsOn ? "Auto-read cards: ON — click to mute" : "Auto-read cards: OFF"}
-              className={cn(
-                "ml-auto flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors",
-                ttsOn
-                  ? "border-accent/50 bg-accent/10 text-accent"
-                  : "border-border bg-transparent text-muted-fg hover:text-fg"
-              )}
-            >
-              {ttsOn ? <Volume2 size={11} /> : <VolumeX size={11} />}
-              {ttsOn ? "AUTO-READ" : "MUTED"}
-            </button>
-          )}
-          {!ttsSupported && <div className="ml-auto" />}
-
           <div
             className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest",
+              "ml-auto flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest",
               online ? "border-success/30 bg-success/10 text-success" : "border-danger/30 bg-danger/10 text-danger"
             )}
           >
@@ -997,9 +971,10 @@ function FlashcardsContent() {
                         {ttsSupported && (
                           <button
                             type="button"
-                            aria-label={speaking ? "Stop reading" : "Read question aloud"}
+                            aria-label="Read question aloud"
                             onClick={(e) => {
                               e.stopPropagation();
+                              e.currentTarget.blur(); // keep SPACE = flip, not re-trigger speech
                               if (speaking) stopTts();
                               else speak(activeCard.front);
                             }}
@@ -1028,11 +1003,8 @@ function FlashcardsContent() {
                       <div className="text-3xl font-bold uppercase leading-relaxed tracking-tight sm:text-4xl">
                         {activeCard.front}
                       </div>
-                      {activeCard.description && (
-                        <p className="mt-4 max-w-[28rem] text-sm font-normal normal-case tracking-normal leading-relaxed text-zinc-400">
-                          {activeCard.description}
-                        </p>
-                      )}
+                      {/* description intentionally NOT shown on the question
+                          face — it can hint the answer. Answer side only. */}
                     </div>
                     <div className="flex items-center justify-between border-t border-border/60 px-7 py-3.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
                       <span className="font-mono">#{activeCard.id.slice(-4)}</span>
@@ -1051,11 +1023,12 @@ function FlashcardsContent() {
                       {ttsSupported && (
                         <button
                           type="button"
-                          aria-label={speaking ? "Stop reading" : "Read answer aloud"}
+                          aria-label="Read answer aloud"
                           onClick={(e) => {
                             e.stopPropagation();
+                            e.currentTarget.blur(); // keep SPACE = flip, not re-trigger speech
                             if (speaking) stopTts();
-                            else speak(activeCard.back);
+                            else speak(activeCard.description ? `${activeCard.back}\n${activeCard.description}` : activeCard.back);
                           }}
                           className="flex h-7 w-7 items-center justify-center rounded-full border border-accent-fg/25 text-accent-fg/70 transition-colors hover:border-accent-fg/60 hover:text-accent-fg"
                         >
