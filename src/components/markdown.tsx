@@ -37,6 +37,8 @@ export function Markdown({ content, className }: { content: string; className?: 
   const outerDir = hasArabic ? ("rtl" as const) : undefined;
   const normalized = (content ?? "")
     .replace(/<\/?br\s*\/?>/gi, "\n")
+    // pre-escaped variants (&lt;/br&gt;) — '\/?' NOT '\/\?' (that typo
+    // required a literal '?' char and matched nothing, ever)
     .replace(/&lt;\/?br\s*\/?&gt;/gi, "\n")
     .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/<\/?div[^>]*>/gi, "\n")
@@ -82,7 +84,7 @@ export function Markdown({ content, className }: { content: string; className?: 
         i++;
       }
       blocks.push(
-        <blockquote key={key++} className="md-quote" dangerouslySetInnerHTML={{ __html: renderInline(quote.join("<br/>")) }} />
+        <blockquote key={key++} className="md-quote" dangerouslySetInnerHTML={{ __html: quote.map((l) => renderInline(l)).join("<br/>") }} />
       );
       continue;
     }
@@ -134,7 +136,7 @@ export function Markdown({ content, className }: { content: string; className?: 
       i++;
     }
     blocks.push(
-      <p key={key++} className="md-p" dangerouslySetInnerHTML={{ __html: renderInline(para.join("<br/>")) }} />
+      <p key={key++} className="md-p" dangerouslySetInnerHTML={{ __html: para.map((l) => renderInline(l)).join("<br/>") }} />
     );
   }
 
