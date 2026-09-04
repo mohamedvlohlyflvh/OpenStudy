@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from "react";
-import { Brain, Zap, Plus, Pencil, Trash2, Layers, BarChart3, AlertTriangle, Timer, Download, Upload, Wifi, WifiOff, Search, CheckSquare, Square, Tag, ArrowRight } from "lucide-react";
+import { Brain, Zap, Plus, Pencil, Trash2, Layers, BarChart3, AlertTriangle, Timer, Download, Upload, Wifi, WifiOff, Search, CheckSquare, Square, Tag, ArrowRight, Volume2, VolumeX } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button, Badge, EmptyState, Modal, Input, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
@@ -42,6 +42,7 @@ import { motion } from "framer-motion";
 import { parseCardsFile } from "@/lib/parsers/cards";
 import { db as offlineDb, cacheBundles, cacheFlashcards, getCachedBundleCards } from "@/lib/db";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useTts } from "@/hooks/use-tts";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { TagInput } from "@/components/tag-input";
 import { ImageUploadButton } from "@/components/image-upload-button";
@@ -194,6 +195,9 @@ function FlashcardsContent() {
   // ─── Offline sync ───────────────────────────────────────────
   const { online, pending, reviewCard } = useOfflineSync();
 
+  // ─── TTS (free browser speechSynthesis) ──────────────────────
+  const { ttsOn, toggle: toggleTts, speaking, speak, stop: stopTts, supported: ttsSupported } = useTts();
+
   // ─── Confetti ───────────────────────────────────────────────
   const triggerConfetti = useCallback(() => {
     const colors = ["#DFE104", "#22C55E", "#3B82F6", "#EF4444", "#EC4899"];
@@ -331,6 +335,15 @@ function FlashcardsContent() {
   // Serve the main due queue first; once it's exhausted, serve the
   // same-session relearning queue (cards rated AGAIN / HARD).
   const activeCard = dueCards[currentIndex] ?? learningQueue[0] ?? null;
+
+  // Auto-read the current card side when TTS is ON (must live AFTER
+  // activeCard's declaration — React effects read consts above them).
+  useEffect(() => {
+    if (!ttsOn || !activeCard) return;
+    if (sprintMode) return; // sprint mode: no audio distractions
+    speak(isFlipped ? activeCard.back : activeCard.front);
+    return () => stopTts();
+  }, [ttsOn, activeCard, isFlipped, sprintMode, speak, stopTts]);
 
   const handleReview = useCallback(
     async (quality: number) => {
@@ -751,9 +764,28 @@ function FlashcardsContent() {
             </div>
           )}
 
+          {ttsSupported && (
+            <button
+              type="button"
+              onClick={toggleTts}
+              aria-pressed={ttsOn}
+              title={ttsOn ? "Auto-read cards: ON — click to mute" : "Auto-read cards: OFF"}
+              className={cn(
+                "ml-auto flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                ttsOn
+                  ? "border-accent/50 bg-accent/10 text-accent"
+                  : "border-border bg-transparent text-muted-fg hover:text-fg"
+              )}
+            >
+              {ttsOn ? <Volume2 size={11} /> : <VolumeX size={11} />}
+              {ttsOn ? "AUTO-READ" : "MUTED"}
+            </button>
+          )}
+          {!ttsSupported && <div className="ml-auto" />}
+
           <div
             className={cn(
-              "ml-auto flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest",
+              "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest",
               online ? "border-success/30 bg-success/10 text-success" : "border-danger/30 bg-danger/10 text-danger"
             )}
           >
@@ -961,15 +993,31 @@ function FlashcardsContent() {
                     <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent to-transparent" />
                     <div className="flex items-center justify-between px-7 pt-5">
                       <Badge>QUESTION</Badge>
-                      {(() => {
-                        const st = getCardStatus(activeCard, nowMs);
-                        return (
-                          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
-                            <span className={cn("h-2 w-2 rounded-full", st.dot)} />
-                            {st.label}
-                          </span>
-                        );
-                      })()}
+                      <div className="flex items-center gap-3">
+                        {ttsSupported && (
+                          <button
+                            type="button"
+                            aria-label={speaking ? "Stop reading" : "Read question aloud"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (speaking) stopTts();
+                              else speak(activeCard.front);
+                            }}
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-border/70 text-muted-fg transition-colors hover:border-accent/50 hover:text-accent"
+                          >
+                            {speaking ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                          </button>
+                        )}
+                        {(() => {
+                          const st = getCardStatus(activeCard, nowMs);
+                          return (
+                            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-fg">
+                              <span className={cn("h-2 w-2 rounded-full", st.dot)} />
+                              {st.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </div>
                     <div className="flex flex-1 flex-col items-center justify-center px-10 pb-4 text-center">
                       {activeCard.topic && (
@@ -1000,6 +1048,20 @@ function FlashcardsContent() {
                     <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent-fg/60 to-transparent" />
                     <div className="flex items-center justify-between px-7 pt-5">
                       <Badge className="bg-accent-fg/15 text-accent-fg">ANSWER</Badge>
+                      {ttsSupported && (
+                        <button
+                          type="button"
+                          aria-label={speaking ? "Stop reading" : "Read answer aloud"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (speaking) stopTts();
+                            else speak(activeCard.back);
+                          }}
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-accent-fg/25 text-accent-fg/70 transition-colors hover:border-accent-fg/60 hover:text-accent-fg"
+                        >
+                          {speaking ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                        </button>
+                      )}
                     </div>
                     <div className="flex flex-1 flex-col items-center justify-center px-10 pb-4 text-center">
                       <div className="[&_p]:text-accent-fg [&_li]:text-accent-fg text-3xl font-bold uppercase leading-relaxed tracking-tight text-accent-fg sm:text-4xl [&_.md-p]:text-accent-fg">
