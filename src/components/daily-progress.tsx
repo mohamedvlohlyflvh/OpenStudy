@@ -39,7 +39,10 @@ function Ring({
     <svg
       width={size}
       height={size}
-      className="absolute inset-0 -rotate-90"
+      // center on the container's midpoint (NOT inset-0, which stretches
+      // every svg to the 140px box and throws inner rings off-center so
+      // they collide instead of nesting concentrically)
+      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90"
       aria-hidden
     >
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-muted)" strokeWidth={stroke} />
