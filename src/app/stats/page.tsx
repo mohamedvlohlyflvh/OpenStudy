@@ -126,16 +126,28 @@ export default function StatsPage() {
   const weeksForHeatmap = PERIODS.find(p => p.key === period)!.weeks;
 
   useEffect(() => {
+    let cancelled = false;
     const now = Date.now(); // impure call is legal in effect scope, not render
     Promise.all([getAllReviewLogs(), getBundles(), getFlashcards(), getStudySessions()]).then(
       ([r, b, c, s]) => {
+        if (cancelled) return;
         setNowMs(now);
         setReviews(r);
         setBundles(b);
         setCards(c as unknown as FlashcardRec[]);
         setSessions(s as unknown as StudySessionRec[]);
       }
-    );
+    ).catch(() => {
+      // Storage failure: unblock the loader; charts render empty.
+      if (!cancelled) {
+        setNowMs(now);
+        setReviews([]);
+        setBundles([]);
+        setCards([]);
+        setSessions([]);
+      }
+    });
+    return () => { cancelled = true; };
   }, []);
 
   if (!reviews || !bundles || !cards || !sessions) {

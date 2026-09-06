@@ -37,6 +37,7 @@ import {
 } from "@/app/actions";
 import { SubjectTopicSelect } from "@/components/subject-topic-select";
 import { cn } from "@/lib/utils";
+import { filterDueCards } from "@/lib/review-queue";
 import { spotlightProps } from "@/lib/interactions";
 import { motion } from "framer-motion";
 import { parseCardsFile } from "@/lib/parsers/cards";
@@ -100,6 +101,7 @@ function FlashcardsContent() {
   const [reviewing, setReviewing] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
   const [totalReviewed, setTotalReviewed] = useState(0);
+  const totalReviewedRef = useRef(0);
   const [learningQueue, setLearningQueue] = useState<Flashcard[]>([]);
   const [sprintMode, setSprintMode] = useState(false);
   const [sprintTimer, setSprintTimer] = useState(5);
@@ -174,6 +176,7 @@ function FlashcardsContent() {
   const [back, setBack] = useState("");
   const [desc, setDesc] = useState("");
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   // ─── Edit/Delete modal ──────────────────────────────────────
   const [editCard, setEditCard] = useState<ManagedFlashcard | null>(null);
@@ -275,6 +278,7 @@ function FlashcardsContent() {
       setLearningQueue([]);
       setCompletedCount(0);
       setTotalReviewed(0);
+      totalReviewedRef.current = 0;
       sessionLoggedRef.current = false;
       sessionRef.current = { reviewed: 0, correct: 0, startedAt: 0 };
     })();
@@ -283,15 +287,16 @@ function FlashcardsContent() {
 
   const loadDueCards = useCallback(async () => {
     let cards: Flashcard[];
-    const now = Date.now();
     if (allDue) {
       cards = (await getAllDueFlashcards()) as Flashcard[];
     } else if (topicParam) {
-      cards = ((await getFlashcards(topicParam)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now);
+      cards = filterDueCards((await getFlashcards(topicParam)) as Flashcard[]);
     } else {
       cards = selectedBundle
-        ? ((await getBundleCards(selectedBundle)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now)
-        : (await getAllFlashcards()) as unknown as Flashcard[];
+        // getBundleCards returns newest-first (management order) —
+        // filterDueCards re-sorts most-overdue-first for the review queue.
+        ? filterDueCards((await getBundleCards(selectedBundle)) as Flashcard[])
+        : ((await getAllDueFlashcards()) as unknown as Flashcard[]);
     }
     setDueCards(cards);
     setCurrentIndex(0);
@@ -300,15 +305,14 @@ function FlashcardsContent() {
 
   const fetchMoreDue = useCallback(async () => {
     let more: Flashcard[];
-    const now = Date.now();
     if (allDue) {
       more = (await getAllDueFlashcards()) as Flashcard[];
     } else if (topicParam) {
-      more = ((await getFlashcards(topicParam)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now);
+      more = filterDueCards((await getFlashcards(topicParam)) as Flashcard[]);
     } else {
       more = selectedBundle
-        ? ((await getBundleCards(selectedBundle)) as Flashcard[]).filter((c) => new Date(c.nextReview).getTime() <= now)
-        : (await getAllFlashcards()) as unknown as Flashcard[];
+        ? filterDueCards((await getBundleCards(selectedBundle)) as Flashcard[])
+        : ((await getAllDueFlashcards()) as unknown as Flashcard[]);
     }
     setDueCards((prev) => [...prev, ...(more as Flashcard[]).filter((c) => !prev.some((p) => p.id === c.id))]);
   }, [selectedBundle, allDue, topicParam]);
@@ -321,13 +325,13 @@ function FlashcardsContent() {
     if (selectedBundle) {
       try {
         const cards = await getBundleCards(selectedBundle);
-        setDueCards(cards as Flashcard[]);
+        setDueCards(filterDueCards(cards as Flashcard[]));
         cacheFlashcards(cards.map((c) => ({ id: c.id, bundleId: c.bundleId, front: c.front, back: c.back, reviewCount: c.reviewCount, nextReview: new Date(c.nextReview).getTime(), isLeech: c.isLeech, synced: true })));
       } catch {
         // keep current list on transient failure
       }
     } else {
-      const cards = await getAllFlashcards();
+      const cards = await getAllDueFlashcards();
       setDueCards(cards as Flashcard[]);
     }
     if (browseLoaded) await loadBrowseAll();
@@ -349,13 +353,15 @@ function FlashcardsContent() {
         if (sessionRef.current.reviewed === 0) sessionRef.current.startedAt = Date.now();
         sessionRef.current.reviewed += 1;
         if (quality >= 3) sessionRef.current.correct += 1;
-        setTotalReviewed((t) => {
-          const newTotal = t + 1;
-          if (newTotal === 25 || newTotal === 50 || newTotal === 100) {
-            setTimeout(() => triggerConfetti(), 0);
-          }
-          return newTotal;
-        });
+        setTotalReviewed((t) => t + 1);
+        totalReviewedRef.current += 1;
+        if (
+          totalReviewedRef.current === 25 ||
+          totalReviewedRef.current === 50 ||
+          totalReviewedRef.current === 100
+        ) {
+          setTimeout(() => triggerConfetti(), 0);
+        }
         setCompletedCount((c) => c + 1);
 
         if (quality < 3 && !servingFromQueue) {
@@ -482,6 +488,11 @@ function FlashcardsContent() {
   // ─── Create/Save handlers ──────────────────────────────────
   const handleCreate = async () => {
     if (!front.trim() || !back.trim()) return;
+    if (!selectedBundle && !selectedTopicId) {
+      setCreateError("SELECT A TOPIC TO FILE THIS CARD UNDER.");
+      return;
+    }
+    setCreateError("");
     setCreating(true);
     try {
       if (selectedBundle) {
@@ -896,6 +907,7 @@ function FlashcardsContent() {
                 onClick={() => {
                   setCompletedCount(0);
                   setTotalReviewed(0);
+                  totalReviewedRef.current = 0;
                   // Allow the next run to auto-log its own study session —
                   // this ref previously stayed true forever, so only the
                   // first run per page load was ever logged.
@@ -1428,6 +1440,7 @@ function FlashcardsContent() {
             />
           </div>
           <p className="text-[10px] text-muted-fg uppercase tracking-widest">⌘/CTRL + ENTER TO SAVE</p>
+          {createError && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{createError}</p>}
           <div className="flex justify-end gap-4 pt-4">
             <Button variant="ghost" onClick={() => setModalOpen(false)}>CANCEL</Button>
             <Button onClick={handleCreate} disabled={creating || !front.trim() || !back.trim()}>

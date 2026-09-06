@@ -61,11 +61,17 @@ export function FocusZone() {
   const { workMin, breakMin, longBreakMin, cyclesBeforeLongBreak } = pomo.config;
 
   useEffect(() => {
-    getSubjects().then((s) => setSubjects(s.map((x) => ({ id: x.id, name: x.name }))));
-    getPomoPresets().then(setPresets);
-    getDueCount().then(setDueCount);
+    let cancelled = false;
+    Promise.all([getSubjects(), getPomoPresets(), getDueCount()])
+      .then(([s, p, d]) => {
+        if (cancelled) return;
+        setSubjects(s.map((x) => ({ id: x.id, name: x.name })));
+        setPresets(p);
+        setDueCount(d);
+      })
+      .catch(() => { /* widget stays usable with empty lists on storage failure */ });
     // Stop ambient audio if this widget unmounts (route change)
-    return () => soundscape.stop();
+    return () => { cancelled = true; soundscape.stop(); };
   }, []);
 
   const pickSoundscape = (name: SoundscapeName) => {

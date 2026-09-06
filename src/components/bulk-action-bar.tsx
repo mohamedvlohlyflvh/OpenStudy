@@ -30,6 +30,10 @@ export function BulkActionBar({
   const [moveTarget, setMoveTarget] = useState<string>(
     currentBundleId ? "" : bundles[0]?.id ?? ""
   );
+  // bundles load async and may arrive after first render — derive the default
+  // at render time instead of syncing it in an effect.
+  const otherBundles = bundles.filter((b) => b.id !== currentBundleId);
+  const effectiveMoveTarget = moveTarget || otherBundles[0]?.id || "";
   const [busy, setBusy] = useState(false);
 
   if (selectedIds.size === 0) return null;
@@ -52,10 +56,10 @@ export function BulkActionBar({
   };
 
   const doMove = async () => {
-    if (!moveTarget) return;
+    if (!effectiveMoveTarget) return;
     setBusy(true);
     try {
-      await batchMoveCards(ids, moveTarget || null);
+      await batchMoveCards(ids, effectiveMoveTarget || null);
       setMoveOpen(false);
       onCleared();
       router.refresh();
@@ -147,17 +151,20 @@ export function BulkActionBar({
             Move <span className="font-bold text-fg">{ids.length}</span> cards to another bundle.
           </p>
           <select
-            value={moveTarget}
+            value={effectiveMoveTarget}
             onChange={(e) => setMoveTarget(e.target.value)}
             className="w-full rounded-xl border-2 border-border bg-bg px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
           >
-            {bundles.filter((b) => b.id !== currentBundleId).map((b) => (
+            {otherBundles.map((b) => (
               <option key={b.id} value={b.id} className="bg-bg text-fg">{b.name}</option>
             ))}
+            {otherBundles.length === 0 && (
+              <option value="" className="bg-bg text-fg">No other bundles — create one first</option>
+            )}
           </select>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setMoveOpen(false)}>CANCEL</Button>
-            <Button size="sm" onClick={doMove} disabled={busy || !moveTarget}>
+            <Button size="sm" onClick={doMove} disabled={busy || !effectiveMoveTarget}>
               {busy ? "MOVING…" : "MOVE"}
             </Button>
           </div>

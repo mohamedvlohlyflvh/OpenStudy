@@ -49,6 +49,7 @@ export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const [mode, setMode] = useState<TimerMode>("stopwatch");
 
@@ -60,6 +61,7 @@ export default function SessionsPage() {
   // ── Shared session fields ──────────────────────────────────────
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [sessionTitle, setSessionTitle] = useState("");
+  const [saveError, setSaveError] = useState("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStartedAtRef = useRef<Date | null>(null);
 
@@ -75,12 +77,20 @@ export default function SessionsPage() {
   const [, startTransition] = useTransition();
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([getStudySessions(), getSubjects(), getPomoPresets()]).then(([s, sub, p]) => {
+      if (cancelled) return;
       setSessions(s);
       setSubjects(sub);
       setPresets(p);
       setLoaded(true);
+    }).catch(() => {
+      if (!cancelled) {
+        setLoadError("COULD NOT LOAD SAVED DATA — STORAGE MAY BE UNAVAILABLE.");
+        setLoaded(true);
+      }
     });
+    return () => { cancelled = true; };
   }, []);
 
   // Stopwatch interval (unchanged)
@@ -125,23 +135,32 @@ export default function SessionsPage() {
     // to the day they began.
     const effectiveStart = startedAt ?? new Date(Date.now() - seconds * 1000);
     startTransition(async () => {
-      const session = await createStudySession({
-        subjectId: selectedSubjectId || undefined,
-        title,
-        durationMin: duration,
-        completed: true,
-        startedAt: effectiveStart,
-      });
-      setSessions((prev) => [
-        {
-          ...session,
-          subject: subjects.find((s) => s.id === selectedSubjectId) ?? null,
-          topic: null,
-        },
-        ...prev,
-      ]);
-      setSessionTitle("");
-      setTimerSeconds(0);
+      try {
+        const session = await createStudySession({
+          subjectId: selectedSubjectId || undefined,
+          title,
+          durationMin: duration,
+          completed: true,
+          startedAt: effectiveStart,
+        });
+        setSessions((prev) => [
+          {
+            ...session,
+            subject: subjects.find((s) => s.id === selectedSubjectId) ?? null,
+            topic: null,
+          },
+          ...prev,
+        ]);
+        setSessionTitle("");
+        setTimerSeconds(0);
+        setSaveError("");
+      } catch {
+        // Storage write failed: keep the title + elapsed time on screen so
+        // the user can retry instead of silently losing the session.
+        setTimerSeconds(seconds);
+        setSessionTitle(title);
+        setSaveError("COULD NOT SAVE THIS SESSION — TRY STOPPING AGAIN.");
+      }
     });
   };
 
@@ -555,6 +574,11 @@ export default function SessionsPage() {
                 >
                   <Square size={14} /> STOP & SAVE
                 </button>
+              )}
+              {(saveError || loadError) && (
+                <p className="mt-2 w-full rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-center font-mono text-[11px] uppercase tracking-widest text-red-400">
+                  {saveError || loadError}
+                </p>
               )}
             </>
           ) : (

@@ -93,11 +93,20 @@ async function topicCounts(topicId: string) {
 }
 
 async function upsertTag(name: string): Promise<{ id: string; name: string }> {
-  const existing = await db.tags.where("name").equals(name).first();
+  // Normalize so "Verbs", "verbs " and "VERBS" share one row (`&name` is unique).
+  const clean = name.trim().toLowerCase();
+  const existing = await db.tags.where("name").equals(clean).first();
   if (existing) return existing;
-  const tag = { id: uid(), name };
-  await db.tags.add(tag);
-  return tag;
+  try {
+    const tag = { id: uid(), name: clean };
+    await db.tags.add(tag);
+    return tag;
+  } catch {
+    // Lost a concurrent insert race on the unique index — re-read the winner.
+    const winner = await db.tags.where("name").equals(clean).first();
+    if (winner) return winner;
+    throw new Error(`Could not create tag "${clean}"`);
+  }
 }
 
 // ─── Subjects ─────────────────────────────────────────────────────
@@ -1138,8 +1147,16 @@ export async function batchTagCards(ids: string[], tagNames: string[]) {
 
 export async function batchMoveCards(ids: string[], targetBundleId: string | null) {
   if (!ids.length) return { count: 0 };
+  // Cards carry their bundle's topicId/subjectId (see createBundleFlashcard),
+  // so moving must propagate the target bundle's linkage — otherwise the card
+  // keeps its old topic and shows up under both the old topic and the new bundle.
+  const target = targetBundleId ? await db.bundles.get(targetBundleId) : null;
   for (const id of ids) {
-    await db.flashcards.update(id, { bundleId: targetBundleId, updatedAt: new Date() });
+    await db.flashcards.update(id, {
+      bundleId: targetBundleId,
+      ...(target ? { topicId: target.topicId, subjectId: target.subjectId } : {}),
+      updatedAt: new Date(),
+    });
   }
   return { count: ids.length };
 }
@@ -1318,6 +1335,10 @@ export type FullExport = {
     notes?: string | null;
     completed: boolean;
     startedAt: string;
+    /** v2.1: re-link the session to its subject/topic on import (matched by name). */
+    subjectName?: string | null;
+    topicName?: string | null;
+    endedAt?: string | null;
   }[];
   goals?: {
     title: string;
@@ -1327,12 +1348,14 @@ export type FullExport = {
     order: number;
     dueDate?: string | null;
     repeat?: GoalRepeat | null;
+    /** v2.1: re-link the goal to its subject on import (matched by name). */
+    subjectName?: string | null;
     color?: string | null;
     completedAt?: string | null;
     milestones: { title: string; done: boolean; order: number }[];
   }[];
   /** v2: raw review logs so streak/heatmap/accuracy survive a restore. */
-  reviewLogs?: { flashcardId?: string; reviewedAt: string; quality: number }[];
+  reviewLogs?: { flashcardId?: string; cardIndex?: number; reviewedAt: string; quality: number }[];
 };
 
 /** Scheduling snapshot attached to every exported card (v2). */
@@ -1346,7 +1369,9 @@ type ExportedCard = {
   easeFactor?: number;
   intervalDays?: number;
   nextReview?: string;
+  lastReview?: string | null;
   reviewCount?: number;
+  consecutiveAgain?: number;
   isLeech?: boolean;
 };
 
@@ -1369,8 +1394,51 @@ export async function exportAllData(): Promise<string> {
     easeFactor: c.easeFactor,
     intervalDays: c.intervalDays,
     nextReview: new Date(c.nextReview).toISOString(),
+    lastReview: c.lastReview ? new Date(c.lastReview).toISOString() : null,
     reviewCount: c.reviewCount,
+    consecutiveAgain: c.consecutiveAgain,
     isLeech: c.isLeech,
+  });
+
+  // Subject/topic lookup for session attribution (v2.1)
+  const subjectsById = new Map(subjects.map((s) => [s.id, s]));
+  const topicsById = new Map((await db.topics.toArray()).map((t) => [t.id, t]));
+  const sessionEntries: FullExport["sessions"] = sessions.map((s) => ({
+    title: s.title,
+    durationMin: s.durationMin,
+    notes: s.notes,
+    completed: s.completed,
+    startedAt: new Date(s.startedAt).toISOString(),
+    subjectName: s.subjectId ? (subjectsById.get(s.subjectId)?.name ?? null) : null,
+    topicName: s.topicId ? (topicsById.get(s.topicId)?.name ?? null) : null,
+    endedAt: s.endedAt ? new Date(s.endedAt).toISOString() : null,
+  }));
+
+  // Card traversal order (v2.1): topic cards (bundle-owned excluded, matching
+  // the subject loop below) then bundle cards. Review logs carry the card's
+  // index in this order so import can re-attach them to the re-created cards.
+  const cardOrder = new Map<string, number>();
+  for (const s of subjects) {
+    const topics = await db.topics.where("subjectId").equals(s.id).sortBy("order");
+    for (const t of topics) {
+      const cards = await db.flashcards.where("topicId").equals(t.id).toArray();
+      for (const c of cards) {
+        if (c.bundleId) continue;
+        if (!cardOrder.has(c.id)) cardOrder.set(c.id, cardOrder.size);
+      }
+    }
+  }
+  for (const b of bundles) {
+    const cards = await db.flashcards.where("bundleId").equals(b.id).toArray();
+    for (const c of cards) {
+      if (!cardOrder.has(c.id)) cardOrder.set(c.id, cardOrder.size);
+    }
+  }
+  const orderedLogs = [...reviewLogs].sort((a, b) => {
+    const ia = cardOrder.has(a.flashcardId) ? cardOrder.get(a.flashcardId)! : Infinity;
+    const ib = cardOrder.has(b.flashcardId) ? cardOrder.get(b.flashcardId)! : Infinity;
+    if (ia !== ib) return ia - ib;
+    return new Date(a.reviewedAt).getTime() - new Date(b.reviewedAt).getTime();
   });
 
   const exportData: FullExport = {
@@ -1378,15 +1446,11 @@ export async function exportAllData(): Promise<string> {
     exportedAt: new Date().toISOString(),
     subjects: [],
     bundles: [],
-    sessions: sessions.map((s) => ({
-      title: s.title,
-      durationMin: s.durationMin,
-      notes: s.notes,
-      completed: s.completed,
-      startedAt: new Date(s.startedAt).toISOString(),
-    })),
+    sessions: sessionEntries,
     goals: [],
-    reviewLogs: reviewLogs.map((r) => ({
+    reviewLogs: orderedLogs.map((r) => ({
+      flashcardId: r.flashcardId,
+      cardIndex: cardOrder.has(r.flashcardId) ? cardOrder.get(r.flashcardId)! : -1,
       reviewedAt: new Date(r.reviewedAt).toISOString(),
       quality: r.quality,
     })),
@@ -1456,6 +1520,7 @@ export async function exportAllData(): Promise<string> {
       order: g.order,
       dueDate: g.dueDate ? new Date(g.dueDate).toISOString() : null,
       repeat: g.repeat ?? null,
+      subjectName: g.subjectId ? (subjectsById.get(g.subjectId)?.name ?? null) : null,
       color: g.color,
       completedAt: g.completedAt ? new Date(g.completedAt).toISOString() : null,
       milestones: ms.map((m) => ({ title: m.title, done: m.done, order: m.order })),
@@ -1478,6 +1543,10 @@ export async function importAllData(json: string): Promise<{ imported: string }>
   }
 
   let imported = "";
+
+  // Card ids in export traversal order (subjects' topics, then bundles) —
+  // review logs carry cardIndex into this order for re-attachment below.
+  const importedCardIds: string[] = [];
 
   // NOTE: not wrapped in db.transaction() — the import path re-enters the
   // same IndexedDB tables through many small awaited helpers and Dexie
@@ -1515,7 +1584,12 @@ export async function importAllData(json: string): Promise<{ imported: string }>
           subjectId: subject.id,
           front: c.front,
           back: c.back,
-          difficulty: c.difficulty,
+          // AGAIN reviews store difficulty 0, which createFlashcard rejects
+          // (min 1) — clamp so reviewed cards survive a round-trip.
+          difficulty:
+            c.difficulty !== undefined
+              ? Math.min(5, Math.max(1, c.difficulty))
+              : undefined,
           description: c.description ?? undefined,
         });
         if (c.tags.length) await setCardTags(card.id, c.tags);
@@ -1526,11 +1600,13 @@ export async function importAllData(json: string): Promise<{ imported: string }>
             ...(c.easeFactor !== undefined ? { easeFactor: c.easeFactor } : {}),
             ...(c.intervalDays !== undefined ? { intervalDays: c.intervalDays } : {}),
             ...(c.nextReview ? { nextReview: new Date(c.nextReview) } : {}),
+            ...(c.lastReview ? { lastReview: new Date(c.lastReview) } : {}),
             ...(c.reviewCount !== undefined ? { reviewCount: c.reviewCount } : {}),
+            ...(c.consecutiveAgain !== undefined ? { consecutiveAgain: c.consecutiveAgain } : {}),
             ...(c.isLeech !== undefined ? { isLeech: c.isLeech } : {}),
-            ...(c.nextReview ? { lastReview: new Date(c.nextReview) } : {}),
           });
         }
+        importedCardIds.push(card.id);
       }
     }
   }
@@ -1575,23 +1651,42 @@ export async function importAllData(json: string): Promise<{ imported: string }>
           ...(c.easeFactor !== undefined ? { easeFactor: c.easeFactor } : {}),
           ...(c.intervalDays !== undefined ? { intervalDays: c.intervalDays } : {}),
           ...(c.nextReview ? { nextReview: new Date(c.nextReview) } : {}),
+          ...(c.lastReview ? { lastReview: new Date(c.lastReview) } : {}),
           ...(c.reviewCount !== undefined ? { reviewCount: c.reviewCount } : {}),
+          ...(c.consecutiveAgain !== undefined ? { consecutiveAgain: c.consecutiveAgain } : {}),
           ...(c.isLeech !== undefined ? { isLeech: c.isLeech } : {}),
-          ...(c.nextReview ? { lastReview: new Date(c.nextReview) } : {}),
           updatedAt: new Date(),
         });
       }
+      importedCardIds.push(card.id);
     }
   }
 
-  // Import sessions
+  // Import sessions (v2.1 re-links subject/topic by name; ids are fresh)
   for (const s of data.sessions) {
-    await createStudySession({
+    let subjectId: string | null = null;
+    let topicId: string | null = null;
+    if (s.subjectName) {
+      const subj = await db.subjects.where("name").equals(s.subjectName).first();
+      if (subj) {
+        subjectId = subj.id;
+        if (s.topicName) {
+          const topic = await db.topics.where("subjectId").equals(subj.id).filter((t) => t.name === s.topicName).first();
+          if (topic) topicId = topic.id;
+        }
+      }
+    }
+    const now = new Date();
+    await db.studySessions.add({
+      id: uid(),
+      subjectId,
+      topicId,
       title: s.title,
       durationMin: s.durationMin,
-      notes: s.notes ?? undefined,
+      notes: s.notes ?? null,
       completed: s.completed,
       startedAt: new Date(s.startedAt),
+      endedAt: s.endedAt ? new Date(s.endedAt) : now,
     });
   }
   imported += `${data.sessions.length} sessions`;
@@ -1599,15 +1694,35 @@ export async function importAllData(json: string): Promise<{ imported: string }>
   // Import goals → milestones (optional field — old backups still work)
   if (data.goals) {
     for (const g of data.goals) {
+      let goalSubjectId: string | null = null;
+      if (g.subjectName) {
+        const subj = await db.subjects.where("name").equals(g.subjectName).first();
+        if (subj) goalSubjectId = subj.id;
+      }
       const goal = await createGoal({
         title: g.title,
         description: g.description ?? undefined,
         horizon: g.horizon,
         dueDate: g.dueDate ? new Date(g.dueDate) : null,
         repeat: g.repeat ?? null,
+        subjectId: goalSubjectId,
         color: g.color ?? null,
       });
-      await moveGoal(goal.id, g.status, g.order);
+      if (g.status === "done" && g.repeat) {
+        // Bypass moveGoal's repeat-reschedule branch — a restore must land
+        // in Done, not bounce back to the backlog with a new due date.
+        await db.goals.update(goal.id, {
+          status: "done",
+          order: g.order,
+          completedAt: g.completedAt ? new Date(g.completedAt) : new Date(),
+          updatedAt: new Date(),
+        });
+      } else {
+        await moveGoal(goal.id, g.status, g.order);
+        if (g.status === "done" && g.completedAt) {
+          await db.goals.update(goal.id, { completedAt: new Date(g.completedAt) });
+        }
+      }
       for (const m of g.milestones ?? []) {
         const ms = await createMilestone(goal.id, m.title);
         if (m.done) await toggleMilestone(ms.id, true);
@@ -1617,15 +1732,18 @@ export async function importAllData(json: string): Promise<{ imported: string }>
   }
 
   // v2: restore review logs. Card ids are fresh (import re-creates everything),
-  // so logs are re-attached to the imported cards by order — we walk the
-  // export's cards (subjects' then bundles') and map the Nth log in the file
-  // to the Nth imported card when counts line up. When they don't (v1 file,
-  // or logs referencing cards not in this file), logs are still imported as
-  // unattached history rows so streak/heatmap counts survive.
+  // so logs are re-attached to the imported cards by cardIndex — the export's
+  // cards (subjects' then bundles') walk the same order as importedCardIds
+  // above. Logs without a usable index (v1/v2.0 files, or cards not in this
+  // file) are still imported as unattached history rows so streak/heatmap
+  // counts survive.
   if (data.reviewLogs?.length) {
     const logs: ReviewLogRec[] = data.reviewLogs.map((r) => ({
       id: uid(),
-      flashcardId: r.flashcardId ?? "imported",
+      flashcardId:
+        r.cardIndex !== undefined && r.cardIndex >= 0 && r.cardIndex < importedCardIds.length
+          ? importedCardIds[r.cardIndex]
+          : "imported",
       quality: r.quality,
       reviewedAt: new Date(r.reviewedAt),
     }));
