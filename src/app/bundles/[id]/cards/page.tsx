@@ -11,6 +11,8 @@ import {
   ArrowLeft,
   Upload,
   Download,
+  Link2,
+  Check,
 } from "lucide-react";
 import { Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
@@ -75,6 +77,7 @@ export default function BundleCardsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTag, setFilterTag] = useState("all");
   const [flippedIds, setFlippedIds] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -333,6 +336,30 @@ export default function BundleCardsPage() {
                 e.target.value = "";
               }}
             />
+            <button
+              onClick={async () => {
+                try {
+                  const url = `${window.location.origin}/share/${bundleId}`;
+                  await navigator.clipboard.writeText(url);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                } catch {
+                  // fallback
+                  const ta = document.createElement("textarea");
+                  ta.value = `${window.location.origin}/share/${bundleId}`;
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand("copy");
+                  ta.remove();
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
+              }}
+              className="flex h-10 items-center gap-2 border-2 border-yellow-400/60 bg-yellow-400/10 px-3 text-xs font-bold uppercase tracking-widest text-yellow-400 transition-colors hover:border-yellow-400 hover:bg-yellow-400/20"
+            >
+              {copied ? <Check size={14} /> : <Link2 size={14} />}
+              {copied ? "COPIED!" : "SHARE BUNDLE"}
+            </button>
             <ShareBundleButton bundleId={bundleId} bundleName={bundleName} />
             <Button onClick={() => setCreateOpen(true)}>
               <Plus size={16} />

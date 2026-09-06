@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Pencil, Layers } from "lucide-react";
+import { Plus, Trash2, Pencil, Layers, Link2, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
@@ -216,6 +216,27 @@ export default function BundlesPage() {
                   {bundle.name.charAt(0)}
                 </div>
                 <div className="flex -mr-2 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.preventDefault()}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      const url = `${window.location.origin}/share/${bundle.id}`;
+                      navigator.clipboard.writeText(url).catch(() => {
+                        const ta = document.createElement("textarea");
+                        ta.value = url;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand("copy");
+                        ta.remove();
+                      });
+                    }}
+                    aria-label="Copy share link"
+                    title="Copy share link"
+                    className="flex items-center gap-1 px-1.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400 hover:text-yellow-400"
+                  >
+                    <Link2 size={13} />
+                    Share
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
