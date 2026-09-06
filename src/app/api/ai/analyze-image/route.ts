@@ -164,6 +164,9 @@ export async function POST(req: Request) {
         temperature: 0.4,
         topP: 0.9,
         maxOutputTokens: 65_536, // no card cap → no truncation risk
+        // No thinking phase — mechanical OCR/extraction (see generate-cards
+        // route: 2.25× faster, same quality).
+        thinkingConfig: { thinkingBudget: 0 },
         // NOTE: no responseMimeType — see generate-cards route. The XML
         // mime knob makes Gemini ignore the prompt and emit JSON.
       },

@@ -140,6 +140,11 @@ export async function POST(req: Request) {
       temperature: 0.4, // factual, low variance
       topP: 0.9,
       maxOutputTokens: 65_536, // unlimited cards: no mid-array truncation risk
+      // Turn OFF the model's chain-of-thought "thinking" phase. Card
+      // extraction is mechanical — thinking only added ~3k tokens of
+      // latency (measured: 22.3s → 9.9s on a 5k-char Arabic chapter,
+      // same card count) and this key is a free-tier one.
+      thinkingConfig: { thinkingBudget: 0 },
       // NOTE: no responseMimeType — Gemini's mime knob only supports
       // JSON/YAML/enum constraining. Setting application/xml made it IGNORE
       // the prompt's XML contract and emit JSON instead. Without the knob,
