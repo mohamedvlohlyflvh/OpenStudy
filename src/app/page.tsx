@@ -91,7 +91,7 @@ export default function DashboardPage() {
         )}
 
         {/* Hero grid: Focus Zone + Daily Progress */}
-        <div className="mb-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
+        <div className="mb-6 grid grid-cols-1 items-stretch gap-6 lg:grid-cols-5">
           <motion.div variants={item} className="lg:col-span-2">
             <FocusZone />
           </motion.div>
