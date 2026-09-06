@@ -49,6 +49,7 @@ import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { TagInput } from "@/components/tag-input";
 import { ImageUploadButton } from "@/components/image-upload-button";
 import { AiImportButton } from "@/components/ai-import-button";
+import { AiGenerateButton } from "@/components/ai-generate-button";
 import { CardKindFields } from "@/components/card-kind-fields";
 
 type Flashcard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
@@ -710,6 +711,11 @@ function FlashcardsContent() {
               />
             ) : null;
           })()}
+          <AiGenerateButton
+            bundles={bundles}
+            defaultBundleId={selectedBundle || undefined}
+            onCreated={reloadCards}
+          />
           <button
             onClick={() => router.push("/bundles")}
             className="ml-auto py-2 text-xs font-bold uppercase tracking-widest text-muted-fg hover:text-accent"
