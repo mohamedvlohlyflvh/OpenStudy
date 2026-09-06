@@ -1120,7 +1120,7 @@ function FlashcardsContent() {
                         </p>
                       )}
                       <div className="[&_p]:text-accent-fg [&_li]:text-accent-fg text-3xl font-bold uppercase leading-relaxed tracking-tight text-accent-fg sm:text-4xl [&_.md-p]:text-accent-fg">
-                        <Markdown content={activeCard.back} />
+                        <Markdown content={activeCard.back} align="center" />
                       </div>
                       {activeCard.description && (
                         <p className="mt-4 max-w-[28rem] text-sm font-normal normal-case tracking-normal leading-relaxed text-accent-fg/70">
@@ -1337,7 +1337,7 @@ function FlashcardsContent() {
                         <span className={cn("mb-2 inline-block text-[10px] font-bold uppercase tracking-widest", flipped ? "text-accent-fg/70" : "text-muted-fg")}>
                           {flipped ? "ANSWER" : "QUESTION"}
                         </span>
-                        <div className="text-lg font-bold uppercase tracking-tight leading-relaxed">{flipped ? <Markdown content={card.back} /> : card.front}</div>
+                        <div className="text-center text-lg font-bold uppercase tracking-tight leading-relaxed">{flipped ? <Markdown content={card.back} align="center" /> : card.front}</div>
                       </div>
                     </div>
                     {card.description && (

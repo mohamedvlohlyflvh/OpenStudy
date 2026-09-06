@@ -32,8 +32,8 @@ function renderInline(text: string): string {
   return s;
 }
 
-export function Markdown({ content, className }: { content: string; className?: string }): ReactNode {
-  const hasArabic = /[\u0600-\u06FF]/.test(content ?? "");
+export function Markdown({ content, className, align }: { content: string; className?: string; align?: "inherit" | "right" | "center" }) {
+  const hasArabic = /[ـ-\u06FF]/.test(content ?? "");
   const outerDir = hasArabic ? ("rtl" as const) : undefined;
   const normalized = (content ?? "")
     .replace(/<\/?br\s*\/?>/gi, "\n")
@@ -140,5 +140,5 @@ export function Markdown({ content, className }: { content: string; className?: 
     );
   }
 
-  return <div dir={outerDir} className={className} style={hasArabic ? ({ unicodeBidi: "plaintext", textAlign: "right" } as React.CSSProperties) : undefined}>{blocks.map((b, idx) => <Fragment key={idx}>{b}</Fragment>)}</div>;
+  return <div dir={outerDir} className={className} style={hasArabic ? ({ unicodeBidi: "plaintext", textAlign: align ?? "right" } as React.CSSProperties) : undefined}>{blocks.map((b, idx) => <Fragment key={idx}>{b}</Fragment>)}</div>;
 }
