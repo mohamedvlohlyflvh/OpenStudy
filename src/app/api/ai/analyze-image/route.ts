@@ -67,6 +67,38 @@ function jsonError(body: ApiError, status: number) {
   return NextResponse.json(body, { status });
 }
 
+/**
+ * Salvage a JSON array cut off mid-output by the model's token cap.
+ * Finds the last complete object, closes the array, returns parseable
+ * JSON — or null when nothing complete exists to salvage.
+ */
+function salvageTruncatedJson(raw: string): string | null {
+  let s = raw.trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "");
+  const start = s.indexOf("[");
+  if (start === -1) return null;
+  s = s.slice(start);
+  let lastBrace = -1;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0 && c === "}") lastBrace = i;
+    }
+  }
+  if (lastBrace === -1) return null;
+  return s.slice(0, lastBrace + 1) + "]";
+}
+
 async function fileToBase64(file: File): Promise<string> {
   const buf = Buffer.from(await file.arrayBuffer());
   return buf.toString("base64");
@@ -153,7 +185,7 @@ export async function POST(req: Request) {
       generationConfig: {
         temperature: 0.4,
         topP: 0.9,
-        maxOutputTokens: 4096,
+        maxOutputTokens: 8192, // 4096 truncates mid-array on dense OCR output → INVALID_JSON
         responseMimeType: "application/json",
       },
     }),
@@ -203,11 +235,33 @@ export async function POST(req: Request) {
   try {
     cards = parseAiCardsInput(raw);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : "parse";
+    // Salvage: truncated mid-array (token cap) — keep the complete cards.
+    if (msg === "INVALID_JSON") {
+      const salvage = salvageTruncatedJson(raw);
+      if (salvage) {
+        try {
+          cards = parseAiCardsInput(salvage);
+          if (cards.length > 0) {
+            const body: ApiSuccess = {
+              ok: true,
+              cards,
+              model: GEMINI_MODEL,
+              elapsedMs: Date.now() - t0,
+              ocrPreview: raw.replace(/[\s\n]+/g, " ").slice(0, 200),
+            };
+            return NextResponse.json(body);
+          }
+        } catch {
+          /* fall through to the error below */
+        }
+      }
+    }
     return jsonError(
       {
         ok: false,
-        error: "SHAPE_MISMATCH",
-        message: `Model output did not match the expected JSON shape (${e instanceof Error ? e.message : "parse"}). Try again with a clearer image.`,
+        error: msg === "SHAPE_MISMATCH" || msg === "INVALID_JSON" ? msg : "SHAPE_MISMATCH",
+        message: `Model output did not match the expected JSON shape (${msg}). Try again with a clearer image.`,
       },
       502
     );

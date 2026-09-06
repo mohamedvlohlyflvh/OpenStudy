@@ -64,7 +64,7 @@ describe("POST /api/ai/analyze-image", () => {
     expect(body.error).toBe("UNSUPPORTED_TYPE");
   });
 
-  it("returns 502 SHAPE_MISMATCH when model output is bad JSON", async () => {
+  it("returns 502 INVALID_JSON when model output is bad JSON", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -81,7 +81,7 @@ describe("POST /api/ai/analyze-image", () => {
     const res = await POST(reqWithImage(pngBlob()));
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.error).toBe("SHAPE_MISMATCH");
+    expect(body.error).toBe("INVALID_JSON");
   });
 
   it("returns parsed cards + ocrPreview on success", async () => {

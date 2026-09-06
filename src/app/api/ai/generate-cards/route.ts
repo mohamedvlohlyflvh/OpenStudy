@@ -73,6 +73,45 @@ function jsonError(body: AiGenerateError, status: number) {
   return NextResponse.json(body, { status });
 }
 
+/**
+ * Salvage a JSON array that was cut off mid-output by the model's token
+ * cap. Finds the last complete object in the array (`{"front": ... }`),
+ * closes the array, and returns parseable JSON. Returns null when the
+ * output has no complete object to salvage.
+ */
+function salvageTruncatedJson(raw: string): string | null {
+  // Strip code fences if present
+  let s = raw.trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "");
+  const start = s.indexOf("[");
+  if (start === -1) return null;
+  s = s.slice(start);
+  // Find the last complete object: last "}" that's followed by nothing but
+  // a comma (or whitespace) and cut there, then close the array.
+  let lastBrace = -1;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0 && c === "}") {
+        // A complete object just closed at top level of the array
+        lastBrace = i;
+      }
+    }
+  }
+  if (lastBrace === -1) return null;
+  return s.slice(0, lastBrace + 1) + "]";
+}
+
 export async function POST(req: Request) {
   const t0 = Date.now();
   const apiKey = process.env.GEMINI_API_KEY;
@@ -132,7 +171,7 @@ export async function POST(req: Request) {
     generationConfig: {
       temperature: 0.4, // factual, low variance
       topP: 0.9,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192, // 4096 truncates mid-array on long/dense (Arabic) sources → INVALID_JSON
       responseMimeType: "application/json", // Gemini's structured-output knob
     },
   };
@@ -200,6 +239,27 @@ export async function POST(req: Request) {
     cards = parseAiCardsInput(raw);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // Salvage: if output was truncated mid-array (token cap), close the
+    // array and keep the complete cards. Arabic-heavy payloads especially
+    // blow the budget: ~3 tokens/char vs ~0.75 for English.
+    if (msg === "INVALID_JSON") {
+      const salvage = salvageTruncatedJson(raw);
+      if (salvage) {
+        try {
+          cards = parseAiCardsInput(salvage);
+          if (cards.length > 0) {
+            return NextResponse.json({
+              ok: true,
+              cards,
+              model: GEMINI_MODEL,
+              elapsedMs: Date.now() - t0,
+            });
+          }
+        } catch {
+          /* fall through to the error below */
+        }
+      }
+    }
     return jsonError(
       {
         ok: false,
