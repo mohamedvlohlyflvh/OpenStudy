@@ -1,0 +1,232 @@
+import { NextResponse } from "next/server";
+
+// Image-to-cards. The client uploads a photo of notes / a textbook page
+// / a whiteboard, and the server sends it to Gemini 2.5 Flash (which is
+// multimodal — handles text + images natively). The output goes through
+// the same parseAiCardsInput zod schema as the text route, so the JSON
+// contract is identical.
+//
+// Why Gemini over Groq here: Groq's vision models were blocked for this
+// key. Gemini handles the same task in one model with `inline_data`, so
+// we have one less moving part (no separate OCR step).
+
+export const runtime = "nodejs";
+export const maxDuration = 90;
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB hard cap
+const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_URL = (key: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
+
+const SYSTEM_INSTRUCTION = `You are a flashcard generator for a spaced-repetition study app.
+
+You are given an image of study material (a textbook page, handwritten notes, a slide, a whiteboard, a diagram with labels, etc.). Read it carefully and return a JSON array of study flashcards. Each card must be an object with two required fields and several optional fields:
+
+  "front"        — a short question, term, or prompt (max 200 chars)
+  "back"         — the answer, definition, or explanation (max 800 chars)
+  "description"  — optional short hint or mnemonic shown with the card (max 200 chars). Omit when nothing useful to add.
+  "tags"         — optional array of 1-4 short topic keywords.
+  "kind"         — optional card type: "basic" (default), "cloze", or "choice".
+                     cloze:  put {{blanks}} in "front" around key terms, e.g. "Paris is {{the capital}} of France". "back" holds the full un-blanked statement.
+                     choice: "back" is the correct answer; "choices" lists 2-4 wrong options as plain strings.
+  "choices"      — required when kind is "choice": array of 2-4 wrong answers.
+
+Rules:
+- Read ALL visible text in the image. Don't skip paragraphs, captions, or labels.
+- If the image has diagrams, extract the labeled concepts into cards.
+- Return ONLY the JSON array, nothing else — no prose, no markdown fences, no commentary.
+- One fact per card. Split dense passages into multiple cards.
+- If the text is not in English, write the cards in that language.
+- Skip page numbers, watermarks, references, and acknowledgments. Only teachable content.
+- Use "front" for what the student should recall and "back" for the explanation.
+- Aim for 5–25 cards. Quality over quantity; do not pad.`;
+
+interface ApiSuccess {
+  ok: true;
+  cards: ReturnType<typeof JSON.parse>;
+  model: string;
+  elapsedMs: number;
+  ocrPreview: string;
+}
+interface ApiError {
+  ok: false;
+  error:
+    | "NO_API_KEY"
+    | "NO_IMAGE"
+    | "IMAGE_TOO_LARGE"
+    | "UNSUPPORTED_TYPE"
+    | "RATE_LIMIT"
+    | "UPSTREAM_ERROR"
+    | "INVALID_JSON"
+    | "SHAPE_MISMATCH"
+    | "NO_CARDS";
+  message: string;
+}
+
+function jsonError(body: ApiError, status: number) {
+  return NextResponse.json(body, { status });
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buf = Buffer.from(await file.arrayBuffer());
+  return buf.toString("base64");
+}
+
+export async function POST(req: Request) {
+  const t0 = Date.now();
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return jsonError(
+      {
+        ok: false,
+        error: "NO_API_KEY",
+        message:
+          "GEMINI_API_KEY is not set on the server. Add it to .env.local and restart `npm run dev`.",
+      },
+      503
+    );
+  }
+
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return jsonError(
+      { ok: false, error: "INVALID_JSON", message: "Expected multipart/form-data with an image file." },
+      400
+    );
+  }
+  const file = form.get("image");
+  if (!(file instanceof File) || file.size === 0) {
+    return jsonError(
+      { ok: false, error: "NO_IMAGE", message: "Upload a non-empty image file." },
+      400
+    );
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return jsonError(
+      {
+        ok: false,
+        error: "IMAGE_TOO_LARGE",
+        message: `Image is ${(file.size / 1024 / 1024).toFixed(1)} MB; max is 8 MB.`,
+      },
+      413
+    );
+  }
+  if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+    return jsonError(
+      {
+        ok: false,
+        error: "UNSUPPORTED_TYPE",
+        message: `Unsupported type "${file.type}". Use PNG, JPEG, WEBP, or GIF.`,
+      },
+      415
+    );
+  }
+
+  const base64 = await fileToBase64(file);
+
+  // Gemini's multimodal shape: one user turn with [text, inline_data].
+  // responseMimeType=application/json forces valid JSON output.
+  const upstream = await fetch(GEMINI_URL(apiKey), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text:
+                "Read this image carefully and return the flashcard JSON array.",
+            },
+            {
+              inline_data: {
+                mime_type: file.type,
+                data: base64,
+              },
+            },
+          ],
+        },
+      ],
+      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      generationConfig: {
+        temperature: 0.4,
+        topP: 0.9,
+        maxOutputTokens: 4096,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
+
+  if (upstream.status === 429) {
+    return jsonError(
+      {
+        ok: false,
+        error: "RATE_LIMIT",
+        message: "Gemini rate-limited the request. Wait a moment and try again.",
+      },
+      429
+    );
+  }
+  if (!upstream.ok) {
+    const detail = await upstream.text().catch(() => "");
+    return jsonError(
+      {
+        ok: false,
+        error: "UPSTREAM_ERROR",
+        message: `Gemini returned ${upstream.status}. ${detail.slice(0, 240)}`,
+      },
+      502
+    );
+  }
+
+  const upstreamJson = (await upstream.json()) as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+    }>;
+  };
+  const raw =
+    upstreamJson.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text ?? "")
+      .join("")
+      .trim() ?? "";
+  if (!raw) {
+    return jsonError(
+      { ok: false, error: "INVALID_JSON", message: "Gemini returned an empty response." },
+      502
+    );
+  }
+
+  const { parseAiCardsInput } = await import("@/lib/ai-import/schema");
+  let cards: ReturnType<typeof parseAiCardsInput>;
+  try {
+    cards = parseAiCardsInput(raw);
+  } catch (e) {
+    return jsonError(
+      {
+        ok: false,
+        error: "SHAPE_MISMATCH",
+        message: `Model output did not match the expected JSON shape (${e instanceof Error ? e.message : "parse"}). Try again with a clearer image.`,
+      },
+      502
+    );
+  }
+  if (cards.length === 0) {
+    return jsonError(
+      { ok: false, error: "NO_CARDS", message: "The model returned no usable cards." },
+      502
+    );
+  }
+
+  const ocrPreview = raw.replace(/[\s\n]+/g, " ").slice(0, 200);
+
+  const body: ApiSuccess = {
+    ok: true,
+    cards,
+    model: GEMINI_MODEL,
+    elapsedMs: Date.now() - t0,
+    ocrPreview,
+  };
+  return NextResponse.json(body);
+}

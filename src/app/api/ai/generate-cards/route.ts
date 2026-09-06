@@ -21,7 +21,9 @@ export const maxDuration = 60; // 60s is the Vercel hobby limit; plenty.
 
 const MAX_SOURCE_CHARS = 8_000;
 const MIN_SOURCE_CHARS = 20;
-const GEMINI_MODEL = "gemini-2.0-flash"; // cheap, fast, good JSON adherence
+// gemini-2.5-flash: cheap, fast, reliable JSON adherence.
+// (gemini-2.0-flash and 3.6-flash are unstable on this key right now.)
+const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_URL = (key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 
