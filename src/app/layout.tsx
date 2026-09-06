@@ -7,6 +7,7 @@ import { ThemeEffects } from "@/components/theme-effects";
 import { SwRegister } from "@/components/sw-register";
 import { PageTransition } from "@/components/page-transition";
 import { CommandPalette } from "@/components/command-palette";
+import { GlobalFocusChip } from "@/components/global-focus-chip";
 
 export const metadata: Metadata = {
   title: "OpenStudy — Learn Smarter",

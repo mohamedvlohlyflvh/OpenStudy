@@ -208,19 +208,37 @@ export default function SessionsPage() {
   };
 
   const startPomodoro = () => {
+    // The session now lives in the global (module-level) engine — it survives
+    // navigation. Push the chosen title/subject into it so logging works
+    // regardless of which route the session ends on.
+    pomo.setMeta({ title: sessionTitle.trim(), subjectId: selectedSubjectId || null });
     pomo.start();
-    timerStartedAtRef.current = new Date();
+    timerStartedAtRef.current = new Date(pomo.startedAt);
   };
 
   const stopPomodoro = () => {
+    const title = pomo.title.trim();
     const snap = pomo.stop();
-    const startedAt = timerStartedAtRef.current;
+    const startedAt = new Date(snap.startedAt);
     timerStartedAtRef.current = null;
-    const title =
-      sessionTitle.trim() ||
-      `POMODORO — ${snap.cycles} CYCLE${snap.cycles === 1 ? "" : "S"}`;
-    persistSession(title, snap.workSeconds, startedAt);
+    const finalTitle =
+      title || `POMODORO — ${snap.cycles} CYCLE${snap.cycles === 1 ? "" : "S"}`;
+    persistSession(finalTitle, snap.workSeconds, startedAt);
   };
+
+  // Adopt a session started elsewhere (dashboard): prefill the title/subject
+  // fields once on mount so STOP & SAVE logs with the right metadata.
+  const adoptedRef = useRef(false);
+  useEffect(() => {
+    if (adoptedRef.current) return;
+    adoptedRef.current = true;
+    if (pomo.running || pomo.paused) {
+      setSessionTitle((t) => t || pomo.title.trim());
+      setSelectedSubjectId((s) => s || (pomo.subjectId ?? ""));
+      timerStartedAtRef.current = new Date(pomo.startedAt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const formatTimer = (s: number) => {
     const h = Math.floor(s / 3600);

@@ -5,7 +5,7 @@
 // phase chips (focus / break / long break), built-in + saved custom
 // presets, and a task banner. Shares the usePomodoro engine with the
 // /sessions page; logs via createStudySession.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Play, Pause, Square, SkipForward, Coffee, Brain, Music } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ import { createStudySession, getSubjects, getPomoPresets, getDueCount } from "@/
 import { usePomodoro, phaseSeconds, BUILTIN_PRESETS } from "@/lib/pomodoro";
 import { soundscape, type SoundscapeName } from "@/lib/soundscape";
 import { RemindMeControl } from "./remind-me-control";
+import { showUndo } from "./undo-toast";
 import type { PomoPresetRec } from "@/lib/db";
 
 const SOUNDSCAPES: SoundscapeName[] = [
@@ -74,6 +75,19 @@ export function FocusZone() {
     return () => { cancelled = true; soundscape.stop(); };
   }, []);
 
+  // Adopt a session started on another route: mirror its task/subject into
+  // the banner so it reads as one continuous session, not a reset widget.
+  const adoptedRef = useRef(false);
+  useEffect(() => {
+    if (adoptedRef.current) return;
+    adoptedRef.current = true;
+    if (pomo.running || pomo.paused) {
+      setTask((t) => t || pomo.title);
+      setSubjectId((s) => s || (pomo.subjectId ?? ""));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pickSoundscape = (name: SoundscapeName) => {
     setSoundscapeName(name);
     soundscape.play(name); // "Silence" stops the engine
@@ -89,6 +103,9 @@ export function FocusZone() {
   };
 
   const start = () => {
+    // Push the current task/subject into the GLOBAL session so logging works
+    // no matter which route the session ends on.
+    pomo.setMeta({ title: task.trim(), subjectId: subjectId || null });
     pomo.start();
   };
 
@@ -97,17 +114,23 @@ export function FocusZone() {
     if (snap.workSeconds >= 3) {
       const duration = Math.max(1, Math.round(snap.workSeconds / 60));
       const title =
-        task.trim() || `Focus — ${snap.cycles} cycle${snap.cycles === 1 ? "" : "s"}`;
+        snap.title.trim() || `Focus — ${snap.cycles} cycle${snap.cycles === 1 ? "" : "s"}`;
       createStudySession({
-        subjectId: subjectId || undefined,
+        subjectId: snap.subjectId || undefined,
         title,
         durationMin: duration,
         completed: true,
-        // Stamp the true start (now − elapsed work) so day-bucketing in
-        // weekly analytics/streaks attributes a midnight-crossing session
-        // to the day it began, not the second it ended.
-        startedAt: new Date(Date.now() - snap.workSeconds * 1000),
+        // Stamp the true start so day-bucketing in weekly analytics/streaks
+        // attributes a midnight-crossing session to the day it began.
+        startedAt: new Date(snap.startedAt),
       }).catch(() => {});
+    } else {
+      // Previously this was a silent no-op — now the user is told.
+      showUndo({
+        message: "SESSION TOO SHORT — NOT LOGGED",
+        undo: () => {},
+        duration: 2500,
+      });
     }
   };
 
