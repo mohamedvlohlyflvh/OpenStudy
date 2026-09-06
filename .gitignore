@@ -59,3 +59,6 @@ _e2e/audit-v2.json
 
 # AutoClaw/ZCode scratch
 .openclaw/
+
+# Midscene E2E run artifacts (logs + HTML reports, regenerated every run)
+midscene_run/
