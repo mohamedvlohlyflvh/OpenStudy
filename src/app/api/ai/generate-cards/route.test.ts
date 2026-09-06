@@ -1,10 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Mock the schema module before importing the route so we don't pull in
-// the full zod tree in tests. The route only calls parseAiCardsInput once.
-const parseAiCardsInput = vi.fn();
+// the full zod tree in tests. The route only calls parseAiCardsXml once.
+const parseAiCardsXml = vi.fn();
 vi.mock("@/lib/ai-import/schema", () => ({
-  parseAiCardsInput: (raw: string) => parseAiCardsInput(raw),
+  parseAiCardsXml: (raw: string) => parseAiCardsXml(raw),
 }));
 
 // Mock global fetch so no real Gemini call is made.
@@ -24,9 +24,18 @@ function req(text: string | object = { text: VALID_TEXT }) {
   });
 }
 
+function geminiResponse(text: string) {
+  return new Response(
+    JSON.stringify({
+      candidates: [{ content: { parts: [{ text }] } }],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+}
+
 describe("POST /api/ai/generate-cards", () => {
   beforeEach(() => {
-    parseAiCardsInput.mockReset();
+    parseAiCardsXml.mockReset();
     fetchMock.mockReset();
     process.env.GEMINI_API_KEY = API_KEY;
   });
@@ -64,39 +73,26 @@ describe("POST /api/ai/generate-cards", () => {
     expect(body.error).toBe("RATE_LIMIT");
   });
 
-  it("returns 502 with SHAPE_MISMATCH when the model output fails parsing", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          candidates: [
-            { content: { parts: [{ text: "this is not json" }] } },
-          ],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      )
-    );
-    parseAiCardsInput.mockImplementationOnce(() => {
-      throw new Error("SHAPE_MISMATCH");
+  it("returns 502 INVALID_OUTPUT when the model output fails XML parsing", async () => {
+    fetchMock.mockResolvedValueOnce(geminiResponse("this is not xml"));
+    parseAiCardsXml.mockImplementationOnce(() => {
+      throw new Error("NO_CARDS_XML");
     });
     const res = await POST(req());
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.error).toBe("SHAPE_MISMATCH");
+    expect(body.error).toBe("NO_CARDS");
   });
 
   it("returns parsed cards with timing on success", async () => {
-    const cards = [{ front: "Q1", back: "A1" }];
+    const cards = [
+      { front: "Q1", back: "A1", tags: ["t1"] },
+      { front: "Q2", back: "A2" },
+    ];
     fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          candidates: [
-            { content: { parts: [{ text: JSON.stringify(cards) }] } },
-          ],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      )
+      geminiResponse("<cards><card><front>Q1</front><back>A1</back></card></cards>")
     );
-    parseAiCardsInput.mockReturnValueOnce(cards);
+    parseAiCardsXml.mockReturnValueOnce(cards);
     const res = await POST(req());
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -104,5 +100,19 @@ describe("POST /api/ai/generate-cards", () => {
     expect(body.cards).toEqual(cards);
     expect(body.model).toMatch(/^gemini-/);
     expect(typeof body.elapsedMs).toBe("number");
+  });
+
+  it("forwards unlimited card counts (no cap on cards returned)", async () => {
+    const cards = Array.from({ length: 60 }, (_, i) => ({
+      front: `Q${i}`,
+      back: `A${i}`,
+    }));
+    fetchMock.mockResolvedValueOnce(geminiResponse("<cards>(60 cards)</cards>"));
+    parseAiCardsXml.mockReturnValueOnce(cards);
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.cards).toHaveLength(60);
   });
 });

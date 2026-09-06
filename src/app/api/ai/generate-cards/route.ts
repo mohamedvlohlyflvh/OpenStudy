@@ -1,35 +1,35 @@
 import { NextResponse } from "next/server";
-import { parseAiCardsInput, type AiCardInput } from "@/lib/ai-import/schema";
+import { parseAiCardsXml, type XmlCard } from "@/lib/ai-import/schema";
 
 // Direct AI card generation. The user pastes source text (notes, a
-// transcript, a chapter) and we call Gemini ourselves, returning the same
-// shape `bulkCreateFlashcards` already accepts — so the existing import
-// pipeline is reused unchanged.
+// transcript, a chapter) and we call Gemini ourselves, parsing the
+// model's XML answer into the shape `bulkCreateFlashcards` accepts.
 //
-// Key design choices:
-//  - 8 KB hard cap on the source text. Longer than that and the model
-//    loses focus; users should chunk instead.
-//  - Response is always a JSON `AiGenerateResponse`, never a stream. The
-//    model is small and the call is short, so streaming buys nothing and
-//    we can give the client a clean single-result contract.
-//  - Output is parsed through the SAME zod schema as the NotebookLM
-//    import, so a malformed response surfaces a SHAPE_MISMATCH error
-//    the UI can recognize.
+// Why XML (not JSON) for the model contract:
+//  - Token-dense languages (Arabic ≈3 tokens/char vs ~0.75 for English)
+//    blew the JSON budget mid-string — a truncated quote broke the ENTIRE
+//    parse. An unterminated <card> just drops that one card.
+//  - No string-escaping failure modes: card text is element content,
+//    not a quoted string with \" \n \\ to misplace.
+//  - Per-card element pairs validate themselves; no zod needed.
+//
+// Card count: no artificial cap. Dense/long chapters may legitimately
+// produce 30–60+ cards; the route streams them all back and the client
+// lets the user prune before accepting.
 
 export const runtime = "nodejs"; // gemini SDK is a node module
 export const maxDuration = 60; // 60s is the Vercel hobby limit; plenty.
 
 const MAX_SOURCE_CHARS = 8_000;
 const MIN_SOURCE_CHARS = 20;
-// gemini-2.5-flash: cheap, fast, reliable JSON adherence.
-// (gemini-2.0-flash and 3.6-flash are unstable on this key right now.)
+// gemini-2.5-flash: cheap, fast, reliable structured-output adherence.
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_URL = (key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 
 interface AiGenerateResponse {
   ok: true;
-  cards: AiCardInput[];
+  cards: XmlCard[];
   model: string;
   /** ms the model call took, server-side. For the "GENERATED IN 3.2S" UI. */
   elapsedMs: number;
@@ -42,74 +42,44 @@ interface AiGenerateError {
     | "TEXT_TOO_LONG"
     | "RATE_LIMIT"
     | "UPSTREAM_ERROR"
-    | "INVALID_JSON"
-    | "SHAPE_MISMATCH"
+    | "INVALID_OUTPUT"
     | "NO_CARDS";
   message: string;
 }
 
 const SYSTEM_INSTRUCTION = `You are a flashcard generator for a spaced-repetition study app.
 
-Read the user's source text and return a JSON array of study flashcards. Each card must be an object with two required fields and several optional fields:
+Read the user's source text and answer with an XML <cards> document. Each flashcard is one <card> element with these children:
 
-  "front"        — a short question, term, or prompt (max 200 chars)
-  "back"         — the answer, definition, or explanation (max 800 chars)
-  "description"  — optional short hint or mnemonic shown with the card (max 200 chars). Omit when nothing useful to add.
-  "tags"         — optional array of 1-4 short topic keywords.
-  "kind"         — optional card type: "basic" (default), "cloze", or "choice".
-                     cloze:  put {{blanks}} in "front" around key terms, e.g. "Paris is {{the capital}} of France". "back" holds the full un-blanked statement.
-                     choice: "back" is the correct answer; "choices" lists 2-4 wrong options as plain strings.
-  "choices"      — required when kind is "choice": array of 2-4 wrong answers.
+  <front>        — required. A short question, term, or prompt (max 200 chars).
+  <back>         — required. The answer, definition, or explanation (max 800 chars).
+  <description>  — optional. A short hint or mnemonic (max 200 chars). Omit when nothing useful to add.
+  <tags>         — optional. 1-4 short topic keywords, comma-separated inside the element, e.g. <tags>biology, cells</tags>.
+  <kind>         — optional. Card type: basic (default, omit the element), cloze, or choice.
+                     cloze: put {{blanks}} in <front> around key terms, e.g. <front>Paris is {{the capital}} of France</front>. <back> holds the full un-blanked statement.
+                     choice: <back> is the correct answer; list 2-4 wrong options as <choice> children inside <choices>.
+  <choices>      — required when kind is choice: 2-4 <choice> children with wrong answers.
 
 Rules:
-- Return ONLY the JSON array, nothing else — no prose, no markdown fences, no commentary.
+- Answer with ONLY the XML — no prose before or after, no markdown fences, no commentary.
+- QUANTITY: cover the source completely. Short passages (1-2 sentences): 2-4 cards. Medium notes (3-5 paragraphs): 5-10 cards. Long or dense chapters: 20-60+ cards — do NOT stop early and do NOT truncate; every distinct concept, definition, date, cause, and effect gets its own card. There is NO card limit.
 - One fact per card. Split dense passages into multiple cards.
 - If the source is not in English, write the cards in the source's language.
 - Skip trivia, references, acknowledgments, and metadata. Only teachable content.
-- Use "front" for what the student should recall and "back" for the explanation.
-- Aim for 5–25 cards. Quality over quantity; do not pad.`;
+- Use <front> for what the student should recall and <back> for the explanation.
+
+Output format (exact skeleton — repeat <card> as many times as the source needs):
+<cards>
+  <card>
+    <front>...</front>
+    <back>...</back>
+    <tags>topic, keyword</tags>
+  </card>
+  <card>...</card>
+</cards>`;
 
 function jsonError(body: AiGenerateError, status: number) {
   return NextResponse.json(body, { status });
-}
-
-/**
- * Salvage a JSON array that was cut off mid-output by the model's token
- * cap. Finds the last complete object in the array (`{"front": ... }`),
- * closes the array, and returns parseable JSON. Returns null when the
- * output has no complete object to salvage.
- */
-function salvageTruncatedJson(raw: string): string | null {
-  // Strip code fences if present
-  let s = raw.trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/, "");
-  const start = s.indexOf("[");
-  if (start === -1) return null;
-  s = s.slice(start);
-  // Find the last complete object: last "}" that's followed by nothing but
-  // a comma (or whitespace) and cut there, then close the array.
-  let lastBrace = -1;
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (esc) { esc = false; continue; }
-    if (c === "\\") { esc = true; continue; }
-    if (c === '"') { inStr = !inStr; continue; }
-    if (inStr) continue;
-    if (c === "{" || c === "[") depth++;
-    else if (c === "}" || c === "]") {
-      depth--;
-      if (depth === 0 && c === "}") {
-        // A complete object just closed at top level of the array
-        lastBrace = i;
-      }
-    }
-  }
-  if (lastBrace === -1) return null;
-  return s.slice(0, lastBrace + 1) + "]";
 }
 
 export async function POST(req: Request) {
@@ -132,7 +102,7 @@ export async function POST(req: Request) {
     body = await req.json();
   } catch {
     return jsonError(
-      { ok: false, error: "INVALID_JSON", message: "Request body must be JSON." },
+      { ok: false, error: "INVALID_OUTPUT", message: "Request body must be JSON." },
       400
     );
   }
@@ -158,21 +128,22 @@ export async function POST(req: Request) {
     );
   }
 
-  // The user payload. Gemini wants the source inside a user turn so the
-  // system instruction can stay verbatim across calls (cached implicitly).
   const userPayload = {
     contents: [
       {
         role: "user",
-        parts: [{ text: `SOURCE:\n"""${text}"""` }],
+        parts: [{ text: `SOURCE:\n"""\n${text}\n"""` }],
       },
     ],
     systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
     generationConfig: {
       temperature: 0.4, // factual, low variance
       topP: 0.9,
-      maxOutputTokens: 8192, // 4096 truncates mid-array on long/dense (Arabic) sources → INVALID_JSON
-      responseMimeType: "application/json", // Gemini's structured-output knob
+      maxOutputTokens: 65_536, // unlimited cards: no mid-array truncation risk
+      // NOTE: no responseMimeType — Gemini's mime knob only supports
+      // JSON/YAML/enum constraining. Setting application/xml made it IGNORE
+      // the prompt's XML contract and emit JSON instead. Without the knob,
+      // the system instruction's XML skeleton is followed reliably.
     },
   };
 
@@ -229,50 +200,25 @@ export async function POST(req: Request) {
 
   if (!raw) {
     return jsonError(
-      { ok: false, error: "INVALID_JSON", message: "Gemini returned an empty response." },
+      { ok: false, error: "INVALID_OUTPUT", message: "Gemini returned an empty response." },
       502
     );
   }
 
-  let cards: AiCardInput[];
+  let cards: XmlCard[];
   try {
-    cards = parseAiCardsInput(raw);
+    cards = parseAiCardsXml(raw);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    // Salvage: if output was truncated mid-array (token cap), close the
-    // array and keep the complete cards. Arabic-heavy payloads especially
-    // blow the budget: ~3 tokens/char vs ~0.75 for English.
-    if (msg === "INVALID_JSON") {
-      const salvage = salvageTruncatedJson(raw);
-      if (salvage) {
-        try {
-          cards = parseAiCardsInput(salvage);
-          if (cards.length > 0) {
-            return NextResponse.json({
-              ok: true,
-              cards,
-              model: GEMINI_MODEL,
-              elapsedMs: Date.now() - t0,
-            });
-          }
-        } catch {
-          /* fall through to the error below */
-        }
-      }
-    }
     return jsonError(
       {
         ok: false,
-        error: msg === "SHAPE_MISMATCH" || msg === "INVALID_JSON" ? msg : "SHAPE_MISMATCH",
-        message: `Model output did not match the expected JSON shape (${msg}). Try again — a different sample usually works.`,
+        error: msg === "NO_CARDS_XML" ? "NO_CARDS" : "INVALID_OUTPUT",
+        message:
+          msg === "NO_CARDS_XML"
+            ? "The model returned no usable cards."
+            : `Model output did not contain any valid <card> elements (${msg}). Try again — a different sample usually works.`,
       },
-      502
-    );
-  }
-
-  if (cards.length === 0) {
-    return jsonError(
-      { ok: false, error: "NO_CARDS", message: "The model returned no usable cards." },
       502
     );
   }

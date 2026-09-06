@@ -42,6 +42,135 @@ export function parseAiCardsInput(raw: string): AiCardInput[] {
   throw new Error("SHAPE_MISMATCH");
 }
 
+// ─── XML output parsing (AI generate routes) ─────────────────────
+//
+// The server asks Gemini to answer in XML rather than JSON:
+//   - Token-dense languages (Arabic ~3 tokens/char) blow JSON budgets
+//     mid-object; an unterminated <card> just drops that one card.
+//   - No escaping hell: model text is plain element content, not a
+//     quoted string with \" \n \\ to misplace.
+//   - zod can't parse XML, so we validate with per-field guards instead.
+//
+// Tolerated quirks: prose around the <cards> root, fenced blocks,
+// self-closed or unterminated trailing <card>, missing optional
+// elements, attribute-style junk on tags.
+
+export interface XmlCard {
+  front: string;
+  back: string;
+  description?: string;
+  tags?: string[];
+  kind?: "basic" | "cloze" | "choice";
+  choices?: string[];
+}
+
+/** Extract inner text of the first <tag>…</tag> pair in a fragment. */
+function innerText(xml: string, tag: string): string | null {
+  const open = `<${tag}`;
+  const i = xml.indexOf(open);
+  if (i === -1) return null;
+  const gt = xml.indexOf(">", i);
+  if (gt === -1) return null;
+  // self-closing <tag/> → empty
+  if (xml[gt - 1] === "/") return "";
+  const close = xml.indexOf(`</${tag}>`, gt);
+  if (close === -1) return null;
+  let s = xml.slice(gt + 1, close);
+  // Basic un-escaping of the five XML entities.
+  s = s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+  return s.trim() ? s.trim() : s;
+}
+
+/** Parse all <card>…</card> blocks out of a model response (or fragment). */
+export function parseAiCardsXml(raw: string): XmlCard[] {
+  const stripped = raw
+    .replace(/^```(?:xml|json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+  if (!stripped) throw new Error("EMPTY_INPUT");
+
+  // Find every <card ...> opening tag; slice to its </card> (or end of
+  // text if truncated — an unterminated card is simply dropped).
+  const cards: XmlCard[] = [];
+  const openRe = /<card(?:\s[^>]*)?>/g;
+  let m: RegExpExecArray | null;
+  let anyOpenTag = false;
+  while ((m = openRe.exec(stripped)) !== null) {
+    anyOpenTag = true;
+    const start = m.index + m[0].length;
+    const closeIdx = stripped.indexOf("</card>", start);
+    const frag =
+      closeIdx === -1
+        ? "" // unterminated (truncation) — skip this one
+        : stripped.slice(start, closeIdx);
+    if (!frag) continue;
+    const front = innerText(frag, "front");
+    const back = innerText(frag, "back");
+    if (!front || !back) continue; // card without both required fields → drop
+    const card: XmlCard = { front, back };
+    const description = innerText(frag, "description");
+    if (description) card.description = description;
+    // tags: one <tags>a, b, c</tags> CSV or multiple <tag>x</tag>
+    const tagsBlock = innerText(frag, "tags");
+    if (tagsBlock) {
+      const list = tagsBlock
+        .replace(/<\/?tag>/g, ",")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (list.length) card.tags = list.slice(0, 8);
+    } else {
+      const tagRe = /<tag(?:\s[^>]*)?>([^<]*)<\/tag>/g;
+      const list: string[] = [];
+      let t: RegExpExecArray | null;
+      while ((t = tagRe.exec(frag)) !== null) {
+        if (t[1].trim()) list.push(t[1].trim());
+      }
+      if (list.length) card.tags = list.slice(0, 8);
+    }
+    const kindRaw = (innerText(frag, "kind") ?? "").toLowerCase().trim();
+    if (kindRaw === "cloze" || kindRaw === "choice") card.kind = kindRaw;
+    const choicesBlock = innerText(frag, "choices");
+    if (choicesBlock) {
+      const list = choicesBlock
+        .replace(/<\/?choice>/g, ",")
+        .split(/[\n,]/)
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (list.length) card.choices = list.slice(0, 8);
+    } else {
+      const chRe = /<choice(?:\s[^>]*)?>([^<]*)<\/choice>/g;
+      const list: string[] = [];
+      let c: RegExpExecArray | null;
+      while ((c = chRe.exec(frag)) !== null) {
+        if (c[1].trim()) list.push(c[1].trim());
+      }
+      if (list.length) card.choices = list.slice(0, 8);
+    }
+    cards.push(card);
+  }
+  if (cards.length === 0) {
+    // No <card> elements at all. Gemini occasionally ignores the XML
+    // contract and answers in JSON (observed when responseMimeType is
+    // mis-set). Fall back to the JSON parser so the request still
+    // succeeds instead of erroring in front of the user.
+    if (!anyOpenTag) {
+      try {
+        return parseAiCardsInput(stripped) as XmlCard[];
+      } catch {
+        /* not JSON either → NO_CARDS_XML below */
+      }
+    }
+    throw new Error("NO_CARDS_XML");
+  }
+  return cards;
+}
+
 /**
  * The single prompt we hand to the user. One block, copy it as-is.
  * Designed for NotebookLM specifically but works in any chat LLM.
