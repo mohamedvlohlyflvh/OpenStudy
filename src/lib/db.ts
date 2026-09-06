@@ -209,6 +209,12 @@ class OpenStudyDB extends Dexie {
 
 export const db = new OpenStudyDB();
 
+// Multi-tab upgrades (e.g. v4→v5 card kinds) would otherwise block
+// forever: an older tab holding the DB open stalls every query in the
+// newer tab with no error. Closing on versionchange lets the upgrade
+// through; the stale tab reloads on its next navigation.
+db.on("versionchange", () => db.close());
+
 // Unique id generator (replaces Prisma cuid defaults)
 export function uid(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();

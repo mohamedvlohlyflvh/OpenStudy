@@ -72,8 +72,14 @@ export function CommandPalette() {
         toggle();
       } else if (e.key === "Escape") setOpen(false);
     };
+    // Custom event so buttons (sidebar, mobile) can open the palette too.
+    const onCustom = () => toggle();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("open-command-palette", onCustom);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("open-command-palette", onCustom);
+    };
   }, [toggle]);
 
   useEffect(() => {
@@ -111,7 +117,7 @@ export function CommandPalette() {
   if (!open) return null;
   let lastGroup = "";
   return (
-    <div className="fixed inset-0 z-[90] flex items-start justify-center bg-black/60 p-4 pt-[12vh]" onClick={() => setOpen(false)}>
+    <div role="dialog" aria-label="Global search" className="fixed inset-0 z-[90] flex items-start justify-center bg-black/60 p-4 pt-[12vh]" onClick={() => setOpen(false)}>
       <div className="w-full max-w-xl overflow-hidden rounded-xl border-2 border-border bg-bg shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
