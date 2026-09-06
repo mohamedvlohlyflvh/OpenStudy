@@ -2,16 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  BookOpen,
-  Brain,
-  Clock,
-  Layers,
-  Sparkles,
-  StickyNote,
-  Target,
-  Zap,
-} from "lucide-react";
+import { BookOpen, Brain, Clock, Layers, Sparkles, StickyNote, Target, Zap } from "lucide-react";
 import Link from "next/link";
 import { Card, CountUp, StudyAllDueButton } from "@/components/dashboard-parts";
 import { TopBar } from "@/components/topbar";
@@ -30,7 +21,6 @@ type Stats = Awaited<ReturnType<typeof getDashboardStats>>;
 type Weekly = Awaited<ReturnType<typeof getWeeklyAnalytics>>;
 type Today = Awaited<ReturnType<typeof getTodayProgress>>;
 
-// Spring spec per DESIGN.md §7
 const SPRING = { type: "spring" as const, stiffness: 260, damping: 20 };
 
 const container = {
@@ -74,10 +64,9 @@ export default function DashboardPage() {
       <TopBar dueCards={stats.dueCards} />
 
       <motion.div variants={container} initial="hidden" animate="show">
-        {/* Due alert */}
         {stats.dueCards > 0 && (
-          <motion.div variants={item}>
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-accent/40 bg-accent-soft px-6 py-4 animate-[pulse-border_2s_ease-in-out_infinite]">
+          <motion.div variants={item} className="mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-accent/40 bg-accent-soft px-6 py-4 animate-[pulse-border_2s_ease-in-out_infinite]">
               <div className="flex items-center gap-3">
                 <Zap size={20} className="text-accent" aria-hidden />
                 <p className="text-sm font-bold tracking-tight text-fg">
@@ -90,25 +79,112 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
-        {/* Hero grid: Focus Zone + Daily Progress */}
-        <div className="mb-6 grid grid-cols-1 items-stretch gap-6 lg:grid-cols-5">
-          <motion.div variants={item} className="lg:col-span-2">
-            <FocusZone />
-          </motion.div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+          {/* Left Column */}
+          <div className="space-y-6 lg:col-span-2">
+            <motion.div variants={item}>
+              <FocusZone />
+            </motion.div>
+            <motion.div variants={item}>
+              <DeadlineList deadlines={weekly?.deadlines ?? []} />
+            </motion.div>
+            {stats.subjectBreakdown.length > 0 && (
+              <motion.div variants={item}>
+                <p className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-fg">
+                  Subjects
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {stats.subjectBreakdown.slice(0, 4).map((s) => (
+                    <Link key={s.id} href="/subjects" aria-label={`Open ${s.name}`}>
+                      <Card hover className="relative overflow-hidden !p-5">
+                        <span
+                          className="absolute inset-y-0 left-0 w-1"
+                          style={{ backgroundColor: s.color }}
+                          aria-hidden
+                        />
+                        <p className="truncate pl-2 font-semibold tracking-tight">{s.name}</p>
+                        <p className="mt-2 pl-2 font-mono text-xs tabular-nums text-muted-fg">
+                          {s.cardCount} cards ·{" "}
+                          {s.dueCount > 0 ? (
+                            <span className="font-bold text-accent">{s.dueCount} due</span>
+                          ) : (
+                            "clear"
+                          )}
+                        </p>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+            <motion.div variants={item}>
+              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-fg">
+                Recent Sessions
+              </p>
+              {stats.recentSessions.length === 0 ? (
+                <Card className="py-12 text-center">
+                  <Sparkles size={28} aria-hidden className="mx-auto mb-3 text-accent" />
+                  <p className="text-sm text-muted-fg">
+                    No sessions yet — start your first Focus Zone timer above.
+                  </p>
+                </Card>
+              ) : (
+                <div className="glass divide-y divide-border overflow-hidden rounded-3xl">
+                  {stats.recentSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="group flex items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-glass-hover"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: session.subject?.color ?? "#64748B" }}
+                          aria-hidden
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold tracking-tight">
+                            {session.title}
+                          </p>
+                          <p className="text-[11px] uppercase tracking-widest text-muted-fg">
+                            {session.subject?.name ?? "General"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                            session.completed
+                              ? "bg-grow/10 text-grow"
+                              : "bg-flow/10 text-flow"
+                          }`}
+                        >
+                          {session.completed ? "Done" : "Active"}
+                        </span>
+                        <span className="font-mono text-xs tabular-nums text-muted-fg">
+                          {formatDuration(session.durationMin)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          </div>
 
-          <motion.div variants={item} className="space-y-6 lg:col-span-3">
-            <DailyProgress
-              data={{
-                cardsReviewed: todayData.cardsReviewedToday,
-                cardsGoal: 30,
-                minutesToday: todayData.minutesToday,
-                minutesGoal: 60,
-                streakDays: todayData.streakDays,
-              }}
-            />
-
-            {/* Stat strip */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {/* Right Column */}
+          <div className="space-y-6 lg:col-span-3">
+            <motion.div variants={item}>
+              <DailyProgress
+                data={{
+                  cardsReviewed: todayData.cardsReviewedToday,
+                  cardsGoal: 30,
+                  minutesToday: todayData.minutesToday,
+                  minutesGoal: 60,
+                  streakDays: todayData.streakDays,
+                }}
+              />
+            </motion.div>
+            <motion.div variants={item} className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[
                 { label: "Subjects", value: stats.totalSubjects, icon: BookOpen },
                 { label: "Topics", value: stats.totalTopics, icon: Layers },
@@ -127,146 +203,50 @@ export default function DashboardPage() {
                   </span>
                 </Card>
               ))}
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Analytics + Deadlines row */}
-        <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <motion.div variants={item} className="lg:col-span-3">
-            {weekly && <WeeklyAnalytics data={weekly.weekDays} />}
-          </motion.div>
-          <motion.div variants={item} className="lg:col-span-2">
-            <DeadlineList deadlines={weekly?.deadlines ?? []} />
-          </motion.div>
-        </div>
-
-        {/* Streak + heatmap */}
-        <motion.div variants={item} className="mb-6">
-          <Card className="space-y-4 !p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-semibold tracking-tight">Review activity</p>
-                <p className="text-[11px] uppercase tracking-widest text-muted-fg">
-                  Daily review log · last 26 weeks
-                </p>
-              </div>
-              <StatsStreakBadge reviews={reviewLogs} />
-            </div>
-            <StatsHeatmap reviews={reviewLogs} weeks={26} />
-          </Card>
-        </motion.div>
-
-        {/* Goals shortcut */}
-        <motion.div variants={item} className="mb-6">
-          <Link href="/goals" aria-label="Open goals board">
-            <Card hover className="flex flex-wrap items-center justify-between gap-4 !p-5">
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                  <Target size={17} aria-hidden />
-                </span>
-                <div>
-                  <p className="font-semibold tracking-tight">Goals</p>
-                  <p className="text-[11px] uppercase tracking-widest text-muted-fg">
-                    Long-term vision · kanban board
-                  </p>
-                </div>
-              </div>
-              <span className="font-mono text-xs tabular-nums text-muted-fg">
-                {goalCounts
-                  ? goalCounts.total === 0
-                    ? "Start planning →"
-                    : `${goalCounts.active} active · ${goalCounts.total} total`
-                  : "…"}
-              </span>
-            </Card>
-          </Link>
-        </motion.div>
-
-        {/* Subject shortcuts */}
-        {stats.subjectBreakdown.length > 0 && (
-          <motion.div variants={item}>
-            <p className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-fg">
-              Subjects
-            </p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {stats.subjectBreakdown.slice(0, 8).map((s) => (
-                <Link key={s.id} href="/subjects" aria-label={`Open ${s.name}`}>
-                  <Card hover className="relative overflow-hidden !p-5">
-                    <span
-                      className="absolute inset-y-0 left-0 w-1"
-                      style={{ backgroundColor: s.color }}
-                      aria-hidden
-                    />
-                    <p className="truncate pl-2 font-semibold tracking-tight">{s.name}</p>
-                    <p className="mt-2 pl-2 font-mono text-xs tabular-nums text-muted-fg">
-                      {s.cardCount} cards ·{" "}
-                      {s.dueCount > 0 ? (
-                        <span className="font-bold text-accent">{s.dueCount} due</span>
-                      ) : (
-                        "clear"
-                      )}
+            </motion.div>
+            <motion.div variants={item}>
+              {weekly && <WeeklyAnalytics data={weekly.weekDays} />}
+            </motion.div>
+            <motion.div variants={item}>
+              <Card className="space-y-4 !p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold tracking-tight">Review activity</p>
+                    <p className="text-[11px] uppercase tracking-widest text-muted-fg">
+                      Daily review log · last 26 weeks
                     </p>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Recent sessions */}
-        <motion.div variants={item} className="mt-8">
-          <p className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-fg">
-            Recent Sessions
-          </p>
-          {stats.recentSessions.length === 0 ? (
-            <Card className="py-12 text-center">
-              <Sparkles size={28} aria-hidden className="mx-auto mb-3 text-accent" />
-              <p className="text-sm text-muted-fg">
-                No sessions yet — start your first Focus Zone timer above.
-              </p>
-            </Card>
-          ) : (
-            <div className="glass divide-y divide-border overflow-hidden rounded-3xl">
-              {stats.recentSessions.map((session) => (
-                <div
-                  key={session.id}
-                  className="group flex items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-glass-hover"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: session.subject?.color ?? "#64748B" }}
-                      aria-hidden
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold tracking-tight">
-                        {session.title}
-                      </p>
+                  </div>
+                  <StatsStreakBadge reviews={reviewLogs} />
+                </div>
+                <StatsHeatmap reviews={reviewLogs} weeks={26} />
+              </Card>
+            </motion.div>
+            <motion.div variants={item}>
+              <Link href="/goals" aria-label="Open goals board">
+                <Card hover className="flex flex-wrap items-center justify-between gap-4 !p-5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                      <Target size={17} aria-hidden />
+                    </span>
+                    <div>
+                      <p className="font-semibold tracking-tight">Goals</p>
                       <p className="text-[11px] uppercase tracking-widest text-muted-fg">
-                        {session.subject?.name ?? "General"}
+                        Long-term vision · kanban board
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
-                        session.completed
-                          ? "bg-grow/10 text-grow"
-                          : "bg-flow/10 text-flow"
-                      }`}
-                    >
-                      {session.completed ? "Done" : "Active"}
-                    </span>
-                    <span className="font-mono text-xs tabular-nums text-muted-fg">
-                      {formatDuration(session.durationMin)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
+                  <span className="font-mono text-xs tabular-nums text-muted-fg">
+                    {goalCounts
+                      ? goalCounts.total === 0
+                        ? "Start planning →"
+                        : `${goalCounts.active} active · ${goalCounts.total} total`
+                      : "…"}
+                  </span>
+                </Card>
+              </Link>
+            </motion.div>
+          </div>
+        </div>
       </motion.div>
     </div>
   );
