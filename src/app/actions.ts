@@ -21,7 +21,9 @@ import {
   type GoalHorizon,
   type GoalStatus,
   type GoalRepeat,
+  type CardKind,
 } from "@/lib/db";
+import { cardKind, cleanChoices, isCloze } from "@/lib/card-kinds";
 import {
   subjectSchema,
   topicSchema,
@@ -306,6 +308,8 @@ export async function createFlashcard(data: {
   back: string;
   description?: string | null;
   difficulty?: number;
+  kind?: CardKind;
+  choices?: string[];
 }) {
   const parsed = z.object({
     topicId: z.string().min(1),
@@ -314,7 +318,17 @@ export async function createFlashcard(data: {
     back: z.string().min(1).max(5000),
     description: z.string().max(2000).nullish(),
     difficulty: z.number().int().min(1).max(5).optional(),
+    kind: z.enum(["basic", "cloze", "choice"]).optional(),
+    choices: z.array(z.string().min(1).max(200)).max(8).optional(),
   }).parse(data);
+  const kind = parsed.kind ?? "basic";
+  const choices = cleanChoices(parsed.choices ?? []);
+  if (kind === "cloze" && !isCloze(parsed.front)) {
+    throw new Error("Cloze cards need at least one {{blank}} in the question.");
+  }
+  if (kind === "choice" && choices.length < 2) {
+    throw new Error("Choice cards need at least 2 options.");
+  }
   const now = new Date();
   const card: FlashcardRec = {
     id: uid(),
@@ -325,6 +339,8 @@ export async function createFlashcard(data: {
     back: parsed.back,
     description: parsed.description ?? null,
     difficulty: parsed.difficulty ?? 1,
+    kind,
+    choices: kind === "choice" ? choices : null,
     easeFactor: 2.5,
     intervalDays: 0,
     nextReview: now, // immediately due
@@ -341,7 +357,7 @@ export async function createFlashcard(data: {
 
 export async function updateFlashcard(
   id: string,
-  data: { front?: string; back?: string; topicId?: string; tags?: string[]; description?: string | null }
+  data: { front?: string; back?: string; topicId?: string; tags?: string[]; description?: string | null; kind?: CardKind; choices?: string[] }
 ) {
   const parsed = z.object({
     front: z.string().min(1).max(2000).optional(),
@@ -349,9 +365,30 @@ export async function updateFlashcard(
     topicId: z.string().min(1).optional(),
     description: z.string().max(2000).nullish(),
     tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+    kind: z.enum(["basic", "cloze", "choice"]).optional(),
+    choices: z.array(z.string().min(1).max(200)).max(8).optional(),
   }).parse(data);
+  // Validate kind-specific rules against the merged front/choices so a
+  // kind change can't strand a card in an unrunnable state.
+  const current = await db.flashcards.get(id);
+  const nextKind = parsed.kind ?? cardKind(current ?? {});
+  const nextFront = parsed.front ?? current?.front ?? "";
+  const nextChoices = parsed.choices !== undefined ? cleanChoices(parsed.choices) : (current?.choices ?? []);
+  if (nextKind === "cloze" && !isCloze(nextFront)) {
+    throw new Error("Cloze cards need at least one {{blank}} in the question.");
+  }
+  if (nextKind === "choice" && nextChoices.length < 2) {
+    throw new Error("Choice cards need at least 2 options.");
+  }
   const { tags, ...rest } = parsed;
-  await db.flashcards.update(id, { ...rest, updatedAt: new Date() });
+  await db.flashcards.update(id, {
+    ...rest,
+    ...(parsed.kind !== undefined ? { kind: parsed.kind } : {}),
+    ...(parsed.choices !== undefined ? { choices: nextKind === "choice" ? nextChoices : null } : {}),
+    // Switching away from choice drops stale distractors.
+    ...(parsed.kind !== undefined && parsed.kind !== "choice" ? { choices: null } : {}),
+    updatedAt: new Date(),
+  });
   if (tags) await setCardTags(id, tags);
   return db.flashcards.get(id);
 }
@@ -935,9 +972,19 @@ export async function createBundleFlashcard(data: {
   back: string;
   description?: string | null;
   tags?: string[];
+  kind?: CardKind;
+  choices?: string[];
 }) {
   const parsed = bundleCardSchema.parse(data);
   const { tags, ...rest } = parsed;
+  const kind = parsed.kind ?? "basic";
+  const choices = cleanChoices(parsed.choices ?? []);
+  if (kind === "cloze" && !isCloze(parsed.front)) {
+    throw new Error("Cloze cards need at least one {{blank}} in the question.");
+  }
+  if (kind === "choice" && choices.length < 2) {
+    throw new Error("Choice cards need at least 2 options.");
+  }
   const now = new Date();
   // If bundle is topic-linked, propagate topicId/subjectId onto the card
   const bundle = await db.bundles.get(rest.bundleId);
@@ -952,6 +999,8 @@ export async function createBundleFlashcard(data: {
     back: rest.back,
     description: rest.description ?? null,
     difficulty: 1,
+    kind,
+    choices: kind === "choice" ? choices : null,
     easeFactor: 2.5,
     intervalDays: 0,
     nextReview: now,
@@ -970,7 +1019,7 @@ export async function createBundleFlashcard(data: {
 // ─── Import a batch of cards (parsed from CSV/Anki/JSON) ──────
 export async function importCardsIntoBundle(
   bundleId: string,
-  cards: { front: string; back: string; tags?: string[]; description?: string }[]
+  cards: { front: string; back: string; tags?: string[]; description?: string; kind?: CardKind; choices?: string[] }[]
 ) {
   const parsed = importBatchSchema.parse(
     (cards ?? []).map((c) => ({ front: c.front, back: c.back, tags: c.tags, description: c.description }))
@@ -980,15 +1029,25 @@ export async function importCardsIntoBundle(
   const bundle = await db.bundles.get(bundleId);
   const topicId = bundle?.topicId ?? null;
   const subjectId = bundle?.subjectId ?? null;
-  const newCards: FlashcardRec[] = parsed.map((c) => ({
-    id: uid(),
-    topicId,
-    subjectId,
-    bundleId,
-    front: c.front,
-    back: c.back,
-    description: c.description ?? null,
-    difficulty: 1,
+  const newCards: FlashcardRec[] = parsed.map((c, i) => {
+    // Lenient kind restore: imports never fail the batch — an invalid
+    // kind spec just becomes a basic card.
+    const raw = cards[i] as { kind?: CardKind; choices?: string[] };
+    let kind: CardKind = raw.kind === "cloze" || raw.kind === "choice" ? raw.kind : "basic";
+    const choices = cleanChoices(raw.choices ?? []);
+    if (kind === "cloze" && !isCloze(c.front)) kind = "basic";
+    if (kind === "choice" && choices.length < 2) kind = "basic";
+    return {
+      id: uid(),
+      topicId,
+      subjectId,
+      bundleId,
+      front: c.front,
+      back: c.back,
+      description: c.description ?? null,
+      difficulty: 1,
+      kind,
+      choices: kind === "choice" ? choices : null,
     easeFactor: 2.5,
     intervalDays: 0,
     nextReview: now,
@@ -998,7 +1057,8 @@ export async function importCardsIntoBundle(
     isLeech: false,
     createdAt: now,
     updatedAt: now,
-  }));
+    };
+  });
   await db.flashcards.bulkAdd(newCards);
 
   // Tag links
@@ -1035,6 +1095,9 @@ export async function exportBundle(bundleId: string) {
       back: c.back,
       // Omit when absent so exports of description-less cards stay byte-identical.
       ...(c.description ? { description: c.description } : {}),
+      // Omit basic kind so old exports/imports stay byte-identical.
+      ...(cardKind(c) !== "basic" ? { kind: cardKind(c) } : {}),
+      ...(cardKind(c) === "choice" && c.choices?.length ? { choices: c.choices } : {}),
     })),
   };
   return JSON.stringify(payload, null, 2);
@@ -1050,19 +1113,26 @@ export async function importBundleCards(
     description?: string;
     desc?: string;
     tags?: string[];
+    kind?: unknown;
+    choices?: string[];
   }[]
 ) {
   if (!Array.isArray(cards) || cards.length === 0) return { count: 0 };
   // Accept both {front,back} (app export) and {question,answer} (external JSON).
   const normalized = cards
-    .map((c) => ({
-      front: String(c.front ?? c.question ?? "").trim(),
-      back: String(c.back ?? c.answer ?? "").trim(),
-      description: String(c.description ?? c.desc ?? "").trim() || undefined,
-      tags: Array.isArray(c.tags)
-        ? c.tags.map((t) => String(t).trim()).filter(Boolean)
-        : undefined,
-    }))
+    .map((c) => {
+      const k = String(c.kind ?? "").toLowerCase();
+      return {
+        front: String(c.front ?? c.question ?? "").trim(),
+        back: String(c.back ?? c.answer ?? "").trim(),
+        description: String(c.description ?? c.desc ?? "").trim() || undefined,
+        tags: Array.isArray(c.tags)
+          ? c.tags.map((t) => String(t).trim()).filter(Boolean)
+          : undefined,
+        kind: k === "cloze" ? ("cloze" as const) : k === "choice" ? ("choice" as const) : undefined,
+        choices: Array.isArray(c.choices) ? c.choices.map((x) => String(x)) : undefined,
+      };
+    })
     .filter((c) => c.front && c.back);
   if (normalized.length === 0) return { count: 0 };
   return importCardsIntoBundle(bundleId, normalized);
@@ -1373,6 +1443,9 @@ type ExportedCard = {
   reviewCount?: number;
   consecutiveAgain?: number;
   isLeech?: boolean;
+  // v2.2 card kinds (omitted for basic cards → import treats them as basic)
+  kind?: CardKind;
+  choices?: string[];
 };
 
 export async function exportAllData(): Promise<string> {
@@ -1398,6 +1471,8 @@ export async function exportAllData(): Promise<string> {
     reviewCount: c.reviewCount,
     consecutiveAgain: c.consecutiveAgain,
     isLeech: c.isLeech,
+    ...(cardKind(c) !== "basic" ? { kind: cardKind(c) } : {}),
+    ...(cardKind(c) === "choice" && c.choices?.length ? { choices: c.choices } : {}),
   });
 
   // Subject/topic lookup for session attribution (v2.1)
@@ -1591,6 +1666,11 @@ export async function importAllData(json: string): Promise<{ imported: string }>
               ? Math.min(5, Math.max(1, c.difficulty))
               : undefined,
           description: c.description ?? undefined,
+          // v2.2 kinds — validated inside createFlashcard for topic cards;
+          // invalid specs throw here (full-backup path is strict, unlike
+          // the lenient bundle-batch path).
+          kind: c.kind,
+          choices: c.choices,
         });
         if (c.tags.length) await setCardTags(card.id, c.tags);
         // v2: restore SM-2 scheduling (v1 backups have no scheduling fields —
@@ -1644,6 +1724,8 @@ export async function importAllData(json: string): Promise<{ imported: string }>
         front: c.front,
         back: c.back,
         description: c.description ?? undefined,
+        kind: c.kind,
+        choices: c.choices,
       });
       if (c.tags.length) await setCardTags(card.id, c.tags);
       if (data.version >= 2) {
@@ -1780,15 +1862,24 @@ export async function bulkCreateFlashcards(
   if (!bundle) return { ok: false, created: 0, error: "Bundle not found." };
 
   const now = new Date();
-  const rows = parsed.map((c) => ({
-    id: uid(),
-    topicId: null,
-    subjectId: null,
-    bundleId,
-    front: c.front,
-    back: c.back,
-    description: c.description ?? null,
-    difficulty: c.difficulty ?? 1,
+  const rows = parsed.map((c) => {
+    // Lenient kind restore (same rule as CSV/batch import): an invalid
+    // kind spec becomes a basic card rather than failing the batch.
+    let kind: CardKind = c.kind === "cloze" || c.kind === "choice" ? c.kind : "basic";
+    const choices = cleanChoices(c.choices ?? []);
+    if (kind === "cloze" && !isCloze(c.front)) kind = "basic";
+    if (kind === "choice" && choices.length < 2) kind = "basic";
+    return {
+      id: uid(),
+      topicId: null,
+      subjectId: null,
+      bundleId,
+      front: c.front,
+      back: c.back,
+      description: c.description ?? null,
+      difficulty: c.difficulty ?? 1,
+      kind,
+      choices: kind === "choice" ? choices : null,
     easeFactor: 2.5,
     intervalDays: 0,
     nextReview: now,
@@ -1798,7 +1889,8 @@ export async function bulkCreateFlashcards(
     isLeech: false,
     createdAt: now,
     updatedAt: now,
-  }));
+    };
+  });
   await db.flashcards.bulkAdd(rows);
   return { ok: true, created: rows.length };
 }

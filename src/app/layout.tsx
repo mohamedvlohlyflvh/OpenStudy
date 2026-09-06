@@ -6,6 +6,7 @@ import { UndoToastHost } from "@/components/undo-toast";
 import { ThemeEffects } from "@/components/theme-effects";
 import { SwRegister } from "@/components/sw-register";
 import { PageTransition } from "@/components/page-transition";
+import { CommandPalette } from "@/components/command-palette";
 
 export const metadata: Metadata = {
   title: "OpenStudy — Learn Smarter",
@@ -52,6 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
         <BottomNav />
         <UndoToastHost />
+        <CommandPalette />
         <ThemeEffects />
         <SwRegister />
       </body>

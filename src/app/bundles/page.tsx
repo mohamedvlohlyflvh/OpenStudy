@@ -8,7 +8,8 @@ import { Button, Modal, Input, EmptyState, Skeleton } from "@/components/ui";
 import { RevealHeading } from "@/components/reveal-heading";
 import { ScrambleSubtitle } from "@/components/scramble-subtitle";
 import { showUndo } from "@/components/undo-toast";
-import { getBundles, createBundle, updateBundle, deleteBundle } from "@/app/actions";
+import { getBundles, createBundle, updateBundle, deleteBundle, importCardsIntoBundle } from "@/app/actions";
+import { parseSharedBundle } from "@/lib/share";
 import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { spotlightProps } from "@/lib/interactions";
 
@@ -133,11 +134,38 @@ export default function BundlesPage() {
             />
           </div>
           {!(loaded && bundles.length === 0) && (
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus size={16} />
-              NEW BUNDLE
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => document.getElementById("share-import")?.click()}>
+                IMPORT SHARE
+              </Button>
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus size={16} />
+                NEW BUNDLE
+              </Button>
+            </div>
           )}
+          <input
+            id="share-import"
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f) return;
+              try {
+                const shared = parseSharedBundle(JSON.parse(await f.text()));
+                const created = await createBundle({ name: shared.name, description: shared.description });
+                await importCardsIntoBundle(created.id, shared.cards.map((c) => ({
+                  front: c.front, back: c.back, description: c.description,
+                  tags: c.tags, kind: c.kind, choices: c.choices,
+                })));
+                router.push("/bundles/" + created.id + "/cards");
+              } catch {
+                alert("IMPORT FAILED: NOT A VALID SHARE FILE.");
+              }
+            }}
+          />
         </div>
       </div>
 

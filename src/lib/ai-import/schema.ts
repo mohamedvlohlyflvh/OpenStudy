@@ -13,6 +13,8 @@ export const AiCardInput = z.object({
   description: z.string().max(2000).optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   difficulty: z.number().int().min(1).max(5).optional(),
+  kind: z.enum(["basic", "cloze", "choice"]).optional(),
+  choices: z.array(z.string().min(1).max(200)).max(8).optional(),
 });
 export type AiCardInput = z.infer<typeof AiCardInput>;
 
@@ -49,6 +51,10 @@ export const NOTEBOOKLM_IMPORT_PROMPT = `You are a flashcard generator. Read the
   "front" — a short question, term, or prompt (max 200 chars)
   "back"  — the answer, definition, or explanation (max 800 chars)
   "description" — an optional short hint, context, or mnemonic shown with the card (max 200 chars). Omit it when the source has nothing useful to add.
+  "kind" — optional card type: "basic" (default), "cloze", or "choice".
+    - cloze: put {{blanks}} in "front" around the key term(s), e.g. "Paris is {{the capital}} of France". "back" holds the full un-blanked statement.
+    - choice: "back" is the correct answer and "choices" lists 2-4 wrong options (plain strings, no letters).
+  "choices" — required when kind is "choice": array of wrong answers.
 
 Rules:
 - Return ONLY the JSON array, nothing else — no prose, no markdown fences, no commentary.

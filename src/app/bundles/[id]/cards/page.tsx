@@ -26,8 +26,11 @@ import {
   exportBundle,
 } from "@/app/actions";
 import { parseCardsFile } from "@/lib/parsers/cards";
+import { ShareBundleButton } from "@/components/share-bundle-button";
 import { cn } from "@/lib/utils";
-import type { BundleRec } from "@/lib/db";
+import type { BundleRec, CardKind } from "@/lib/db";
+import { cardKind, cleanChoices } from "@/lib/card-kinds";
+import { CardKindFields } from "@/components/card-kind-fields";
 
 type CardStatus = { label: string; dot: string };
 
@@ -47,6 +50,8 @@ type Card = {
   front: string;
   back: string;
   description?: string | null;
+  kind?: CardKind | null;
+  choices?: string[] | null;
   reviewCount: number;
   nextReview: Date | string;
   tags: CardTag[];
@@ -76,16 +81,22 @@ export default function BundleCardsPage() {
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
   const [desc, setDesc] = useState("");
+  const [createKind, setCreateKind] = useState<CardKind>("basic");
+  const [createChoicesText, setCreateChoicesText] = useState("");
   const [createTags, setCreateTags] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   // Edit/Delete
   const [editCard, setEditCard] = useState<Card | null>(null);
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editKind, setEditKind] = useState<CardKind>("basic");
+  const [editChoicesText, setEditChoicesText] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Card | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -158,6 +169,7 @@ export default function BundleCardsPage() {
 
   const handleCreate = async () => {
     if (!front.trim() || !back.trim()) return;
+    setCreateError("");
     setCreating(true);
     try {
       await createBundleFlashcard({
@@ -166,14 +178,20 @@ export default function BundleCardsPage() {
         back: back.trim(),
         description: desc.trim() || undefined,
         tags: createTags.length ? createTags : undefined,
+        kind: createKind,
+        choices: createKind === "choice" ? cleanChoices(createChoicesText.split("\n")) : undefined,
       });
       setCreateOpen(false);
       setFront("");
       setBack("");
       setDesc("");
+      setCreateKind("basic");
+      setCreateChoicesText("");
       setCreateTags([]);
       setLoaded(false);
       await load();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message.toUpperCase().slice(0, 140) : "COULD NOT CREATE CARD.");
     } finally {
       setCreating(false);
     }
@@ -181,6 +199,7 @@ export default function BundleCardsPage() {
 
   const handleEditSave = async () => {
     if (!editCard || !editFront.trim() || !editBack.trim()) return;
+    setEditError("");
     setSaving(true);
     try {
       await updateFlashcard(editCard.id, {
@@ -188,10 +207,14 @@ export default function BundleCardsPage() {
         back: editBack.trim(),
         description: editDesc.trim() || null,
         tags: editTags,
+        kind: editKind,
+        choices: editKind === "choice" ? cleanChoices(editChoicesText.split("\n")) : undefined,
       });
       setEditCard(null);
       setLoaded(false);
       await load();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message.toUpperCase().slice(0, 140) : "COULD NOT SAVE CARD.");
     } finally {
       setSaving(false);
     }
@@ -310,6 +333,7 @@ export default function BundleCardsPage() {
                 e.target.value = "";
               }}
             />
+            <ShareBundleButton bundleId={bundleId} bundleName={bundleName} />
             <Button onClick={() => setCreateOpen(true)}>
               <Plus size={16} />
               Add card
@@ -436,6 +460,8 @@ export default function BundleCardsPage() {
                           setEditFront(card.front);
                           setEditBack(card.back);
                           setEditDesc(card.description ?? "");
+                          setEditKind(cardKind(card));
+                          setEditChoicesText((card.choices ?? []).join("\n"));
                           setEditTags(card.tags.map((t) => t.tag.name));
                         }}
                         aria-label="Edit"
@@ -464,6 +490,7 @@ export default function BundleCardsPage() {
                         )}
                       >
                         {flipped ? "ANSWER" : "QUESTION"}
+                        {cardKind(card) !== "basic" && ` • ${cardKind(card).toUpperCase()}`}
                       </span>
                       <p className="text-lg font-bold uppercase tracking-tight leading-relaxed">
                         {flipped ? card.back : card.front}
@@ -536,6 +563,8 @@ export default function BundleCardsPage() {
             </label>
             <TagInput tags={createTags} onChange={setCreateTags} />
           </div>
+          <CardKindFields kind={createKind} onKindChange={setCreateKind} choicesText={createChoicesText} onChoicesTextChange={setCreateChoicesText} />
+          {createError && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{createError}</p>}
           <div className="flex justify-end gap-4 pt-4">
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>
               CANCEL
@@ -576,6 +605,8 @@ export default function BundleCardsPage() {
               </label>
               <TagInput tags={editTags} onChange={setEditTags} />
             </div>
+            <CardKindFields kind={editKind} onKindChange={setEditKind} choicesText={editChoicesText} onChoicesTextChange={setEditChoicesText} />
+            {editError && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{editError}</p>}
             <div className="flex justify-end gap-4 pt-4">
               <Button variant="ghost" onClick={() => setEditCard(null)}>
                 CANCEL

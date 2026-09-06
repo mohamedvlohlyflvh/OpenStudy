@@ -92,6 +92,8 @@ export const bundleCardSchema = z.object({
   back: z.string().min(1, "Back side is required").max(5000),
   description: z.string().max(2000).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+  kind: z.enum(["basic", "cloze", "choice"]).optional(),
+  choices: z.array(z.string().min(1).max(200)).max(8).optional(),
 });
 
 export type BundleCardInput = z.infer<typeof bundleCardSchema>;

@@ -38,6 +38,7 @@ import {
 import { SubjectTopicSelect } from "@/components/subject-topic-select";
 import { cn } from "@/lib/utils";
 import { filterDueCards } from "@/lib/review-queue";
+import { cardKind, cleanChoices, maskCloze, shuffled, type CardKind } from "@/lib/card-kinds";
 import { spotlightProps } from "@/lib/interactions";
 import { motion } from "framer-motion";
 import { parseCardsFile } from "@/lib/parsers/cards";
@@ -48,6 +49,7 @@ import { BundleColorPicker } from "@/components/bundle-color-picker";
 import { TagInput } from "@/components/tag-input";
 import { ImageUploadButton } from "@/components/image-upload-button";
 import { AiImportButton } from "@/components/ai-import-button";
+import { CardKindFields } from "@/components/card-kind-fields";
 
 type Flashcard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
 type ManagedFlashcard = Awaited<ReturnType<typeof getAllFlashcards>>[number];
@@ -175,6 +177,8 @@ function FlashcardsContent() {
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
   const [desc, setDesc] = useState("");
+  const [kind, setKind] = useState<CardKind>("basic");
+  const [choicesText, setChoicesText] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
@@ -183,8 +187,11 @@ function FlashcardsContent() {
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editKind, setEditKind] = useState<CardKind>("basic");
+  const [editChoicesText, setEditChoicesText] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ManagedFlashcard | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -342,6 +349,18 @@ function FlashcardsContent() {
   // same-session relearning queue (cards rated AGAIN / HARD).
   const activeCard = dueCards[currentIndex] ?? learningQueue[0] ?? null;
 
+  // ─── Multiple-choice answering ──────────────────────────────
+  // The tapped option flips the card; correctness is revealed on the
+  // answer face. Reset on every rating (card advance happens only there).
+  const [pickedChoice, setPickedChoice] = useState<string | null>(null);
+  const choiceOptions = useMemo(
+    () =>
+      activeCard && cardKind(activeCard) === "choice"
+        ? shuffled([activeCard.back, ...(activeCard.choices ?? [])])
+        : [],
+    [activeCard]
+  );
+
   const handleReview = useCallback(
     async (quality: number) => {
       if (!activeCard || reviewing) return;
@@ -386,6 +405,7 @@ function FlashcardsContent() {
           setLearningQueue((prev) => [...prev.slice(1), prev[0]]);
         }
         setIsFlipped(false);
+        setPickedChoice(null);
 
         // Dynamic queue replenishment (only while the main queue is live)
         if (currentIndex < dueCards.length - 5) {
@@ -494,18 +514,25 @@ function FlashcardsContent() {
     }
     setCreateError("");
     setCreating(true);
+    // Choices are one-per-line; validation errors (cloze without {{}},
+    // choice with <2 options) surface in the modal, not silently.
+    const choices = kind === "choice" ? cleanChoices(choicesText.split("\n")) : undefined;
     try {
       if (selectedBundle) {
-        await createBundleFlashcard({ bundleId: selectedBundle, front: front.trim(), back: back.trim(), description: desc.trim() || undefined });
+        await createBundleFlashcard({ bundleId: selectedBundle, front: front.trim(), back: back.trim(), description: desc.trim() || undefined, kind, choices });
       } else if (selectedTopicId) {
-        await createFlashcard({ topicId: selectedTopicId, front: front.trim(), back: back.trim(), description: desc.trim() || undefined });
+        await createFlashcard({ topicId: selectedTopicId, front: front.trim(), back: back.trim(), description: desc.trim() || undefined, kind, choices });
       }
       setModalOpen(false);
       setFront("");
       setBack("");
       setDesc("");
+      setKind("basic");
+      setChoicesText("");
       setSelectedTopicId("");
       await loadDueCards();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message.toUpperCase().slice(0, 140) : "COULD NOT CREATE CARD.");
     } finally {
       setCreating(false);
     }
@@ -513,6 +540,7 @@ function FlashcardsContent() {
 
   const handleEditSave = async () => {
     if (!editCard || !editFront.trim() || !editBack.trim()) return;
+    setEditError("");
     setSaving(true);
     try {
       await updateFlashcard(editCard.id, {
@@ -520,21 +548,21 @@ function FlashcardsContent() {
         back: editBack.trim(),
         description: editDesc.trim() || null,
         tags: editTags,
+        kind: editKind,
+        choices: editKind === "choice" ? cleanChoices(editChoicesText.split("\n")) : undefined,
       });
       setEditCard(null);
       // Refresh browse list so the edited card shows new text immediately
       if (browseLoaded) await loadBrowseAll();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message.toUpperCase().slice(0, 140) : "COULD NOT SAVE CARD.");
     } finally {
       setSaving(false);
     }
   };
 
-  // Prefill the edit description whenever a card is loaded into the edit
-  // modal (the modal opens when editCard is set).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (editCard) setEditDesc(editCard.description ?? "");
-  }, [editCard]);
+  // Edit fields are prefilled at the EDIT click site (event handler),
+  // never in an effect.
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -978,7 +1006,12 @@ function FlashcardsContent() {
                   <div className="flip-face absolute inset-0 flex flex-col overflow-hidden rounded-2xl border-2 border-border bg-zinc-900/60 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.8)]">
                     <span className="absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-accent to-transparent" />
                     <div className="flex items-center justify-between px-7 pt-5">
-                      <Badge>QUESTION</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge>QUESTION</Badge>
+                        {cardKind(activeCard) !== "basic" && (
+                          <Badge className="border-accent/50 bg-accent/10 text-accent">{cardKind(activeCard).toUpperCase()}</Badge>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3">
                         {ttsSupported && (
                           <button
@@ -988,7 +1021,7 @@ function FlashcardsContent() {
                               e.stopPropagation();
                               e.currentTarget.blur(); // keep SPACE = flip, not re-trigger speech
                               if (speaking) stopTts();
-                              else speak(activeCard.front);
+                              else speak(cardKind(activeCard) === "cloze" ? maskCloze(activeCard.front) : activeCard.front);
                             }}
                             className="flex h-7 w-7 items-center justify-center rounded-full border border-border/70 text-muted-fg transition-colors hover:border-accent/50 hover:text-accent"
                           >
@@ -1013,8 +1046,29 @@ function FlashcardsContent() {
                         </p>
                       )}
                       <div className="text-3xl font-bold uppercase leading-relaxed tracking-tight sm:text-4xl">
-                        {activeCard.front}
+                        {cardKind(activeCard) === "cloze" ? maskCloze(activeCard.front) : activeCard.front}
                       </div>
+                      {/* Multiple-choice options: tapping one flips the card;
+                          correctness is revealed on the answer face. Wrapper
+                          stops propagation so selecting doesn't double-flip. */}
+                      {cardKind(activeCard) === "choice" && (
+                        <div className="mt-6 grid w-full max-w-[28rem] gap-2" onClick={(e) => e.stopPropagation()}>
+                          {choiceOptions.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPickedChoice(opt);
+                                setIsFlipped(true);
+                              }}
+                              className="border-2 border-border bg-bg/60 px-4 py-2.5 text-sm font-bold uppercase tracking-tight text-fg transition-colors hover:border-accent hover:text-accent"
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {/* description intentionally NOT shown on the question
                           face — it can hint the answer. Answer side only. */}
                     </div>
@@ -1049,6 +1103,16 @@ function FlashcardsContent() {
                       )}
                     </div>
                     <div className="flex flex-1 flex-col items-center justify-center px-10 pb-4 text-center">
+                      {pickedChoice !== null && cardKind(activeCard) === "choice" && (
+                        <p className={cn(
+                          "mb-4 border-2 px-3 py-1.5 text-xs font-bold uppercase tracking-widest",
+                          pickedChoice === activeCard.back
+                            ? "border-success/60 bg-success/10 text-success"
+                            : "border-danger/60 bg-danger/10 text-danger"
+                        )}>
+                          {pickedChoice === activeCard.back ? "✓ CORRECT" : `✗ YOU PICKED: ${pickedChoice.toUpperCase().slice(0, 60)}`}
+                        </p>
+                      )}
                       <div className="[&_p]:text-accent-fg [&_li]:text-accent-fg text-3xl font-bold uppercase leading-relaxed tracking-tight text-accent-fg sm:text-4xl [&_.md-p]:text-accent-fg">
                         <Markdown content={activeCard.back} />
                       </div>
@@ -1239,6 +1303,9 @@ function FlashcardsContent() {
                             setEditBack(card.back);
                             setEditDesc(card.description ?? "");
                             setEditTags(card.tags?.map((t) => t.tag.name) ?? []);
+                            setEditKind(cardKind(card));
+                            setEditChoicesText((card.choices ?? []).join("\n"));
+                            setEditError("");
                           }}
                           aria-label="Edit card"
                           title="Edit"
@@ -1439,6 +1506,7 @@ function FlashcardsContent() {
               onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleCreate(); }}
             />
           </div>
+          <CardKindFields kind={kind} onKindChange={setKind} choicesText={choicesText} onChoicesTextChange={setChoicesText} />
           <p className="text-[10px] text-muted-fg uppercase tracking-widest">⌘/CTRL + ENTER TO SAVE</p>
           {createError && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{createError}</p>}
           <div className="flex justify-end gap-4 pt-4">
@@ -1476,6 +1544,8 @@ function FlashcardsContent() {
               <label className="text-xs font-bold uppercase tracking-widest text-muted-fg">TAGS</label>
               <TagInput tags={editTags} onChange={setEditTags} />
             </div>
+            <CardKindFields kind={editKind} onKindChange={setEditKind} choicesText={editChoicesText} onChoicesTextChange={setEditChoicesText} />
+            {editError && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{editError}</p>}
             <div className="flex justify-end gap-4 pt-4">
               <Button variant="ghost" onClick={() => setEditCard(null)}>CANCEL</Button>
               <Button onClick={handleEditSave} disabled={saving || !editFront.trim() || !editBack.trim()}>

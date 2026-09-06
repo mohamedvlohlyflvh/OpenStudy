@@ -69,6 +69,8 @@ export interface BundleRec {
   updatedAt: Date;
 }
 
+export type CardKind = "basic" | "cloze" | "choice";
+
 export interface FlashcardRec {
   id: string;
   topicId?: string | null;
@@ -78,6 +80,8 @@ export interface FlashcardRec {
   back: string;
   description?: string | null;
   difficulty: number;
+  kind?: CardKind | null; // absent (pre-v5) = basic
+  choices?: string[] | null; // distractors for choice cards; back stays the answer
   easeFactor: number;
   intervalDays: number;
   nextReview: Date;
@@ -195,6 +199,10 @@ class OpenStudyDB extends Dexie {
     // v4: bundle topic link — bundle can be owned by a topic
     this.version(4).stores({
       bundles: "id, createdAt, topicId, subjectId",
+    });
+    // v5: card kinds — cloze + multiple-choice (additive index, old cards read as basic)
+    this.version(5).stores({
+      flashcards: "id, topicId, subjectId, bundleId, nextReview, createdAt, kind",
     });
   }
 }

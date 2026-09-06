@@ -14,10 +14,33 @@
 // (description also accepts the aliases desc/hint/note/notes).
 // Header names that map a column to the card's optional description.
 const DESCRIPTION_HEADERS = new Set(["description", "desc", "hint", "note", "notes"]);
+// Header names for card kind (basic/cloze/choice — "mcq" and
+// "multiple choice" also map to choice).
+const KIND_HEADERS = new Set(["kind", "type", "cardtype", "card_type"]);
+// Header names for choice distractors. Split on | first (options often
+// contain commas), then ;, then newlines.
+const CHOICES_HEADERS = new Set(["choices", "options", "distractors", "wrong"]);
+
+function parseKindCell(v: string): "basic" | "cloze" | "choice" | undefined {
+  const t = v.trim().toLowerCase();
+  if (!t) return undefined;
+  if (t === "cloze" || t === "c") return "cloze";
+  if (t === "choice" || t === "mcq" || t === "multiple choice" || t === "multiple-choice") return "choice";
+  if (t === "basic" || t === "b" || t === "standard") return "basic";
+  return undefined;
+}
+
+function parseChoicesCell(v: string): string[] | undefined {
+  const t = v.trim();
+  if (!t) return undefined;
+  const parts = t.includes("|") ? t.split("|") : t.includes(";") ? t.split(";") : t.split("\n");
+  const out = parts.map((p) => p.trim()).filter(Boolean);
+  return out.length ? out : undefined;
+}
 
 export function parseCardsFile(
   raw: string
-): { front: string; back: string; tags?: string[]; description?: string }[] {
+): { front: string; back: string; tags?: string[]; description?: string; kind?: "basic" | "cloze" | "choice"; choices?: string[] }[] {
   let trimmed = raw.trim();
   if (!trimmed) return [];
 
@@ -56,11 +79,23 @@ export function parseCardsFile(
               rawDesc === undefined || rawDesc === null
                 ? undefined
                 : String(rawDesc).trim() || undefined;
+            const rawKind = o.kind ?? o.type;
+            const kind =
+              typeof rawKind === "string" ? parseKindCell(rawKind) : undefined;
+            const rawChoices = o.choices ?? o.options ?? o.distractors;
+            const choices =
+              typeof rawChoices === "string"
+                ? parseChoicesCell(rawChoices)
+                : Array.isArray(rawChoices)
+                  ? (rawChoices as unknown[]).map((x) => String(x).trim()).filter(Boolean)
+                  : undefined;
             return {
               front: front.trim(),
               back: back.trim(),
               ...(tags?.length ? { tags } : {}),
               ...(description ? { description } : {}),
+              ...(kind && kind !== "basic" ? { kind } : {}),
+              ...(choices?.length ? { choices } : {}),
             };
           })
           .filter(Boolean) as {
@@ -68,6 +103,8 @@ export function parseCardsFile(
           back: string;
           tags?: string[];
           description?: string;
+          kind?: "basic" | "cloze" | "choice";
+          choices?: string[];
         }[];
       }
     } catch {
@@ -81,12 +118,14 @@ export function parseCardsFile(
     .filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
 
-  const result: { front: string; back: string; tags?: string[]; description?: string }[] = [];
+  const result: { front: string; back: string; tags?: string[]; description?: string; kind?: "basic" | "cloze" | "choice"; choices?: string[] }[] = [];
 
   // Column map built from the first data line when it is a recognized header
   // row. `tagCols === undefined` means no header was recognized → legacy
   // behavior (all trailing columns are tags, e.g. headerless Anki TSV).
   let descCol: number | undefined;
+  let kindCol: number | undefined;
+  let choicesCol: number | undefined;
   let tagCols: number[] | undefined;
   let first = true;
 
@@ -114,11 +153,17 @@ export function parseCardsFile(
       first = false;
       if (isHeaderRow) {
         descCol = undefined;
+        kindCol = undefined;
+        choicesCol = undefined;
         tagCols = [];
         for (let i = 2; i < cells.length; i++) {
           const name = cells[i].toLowerCase();
           if (DESCRIPTION_HEADERS.has(name)) {
             if (descCol === undefined) descCol = i;
+          } else if (KIND_HEADERS.has(name)) {
+            if (kindCol === undefined) kindCol = i;
+          } else if (CHOICES_HEADERS.has(name)) {
+            if (choicesCol === undefined) choicesCol = i;
           } else {
             // "tag"/"tags" columns and any unrecognized trailing column stay tags
             tagCols.push(i);
@@ -134,11 +179,19 @@ export function parseCardsFile(
 
     let tags: string[] | undefined;
     let description: string | undefined;
+    let kind: "basic" | "cloze" | "choice" | undefined;
+    let choices: string[] | undefined;
     if (tagCols) {
-      // Header-mapped row: description/tags come from their mapped columns.
+      // Header-mapped row: description/kind/choices/tags come from mapped columns.
       if (descCol !== undefined && descCol < cells.length) {
         const d = cells[descCol].trim();
         if (d) description = d;
+      }
+      if (kindCol !== undefined && kindCol < cells.length) {
+        kind = parseKindCell(cells[kindCol]);
+      }
+      if (choicesCol !== undefined && choicesCol < cells.length) {
+        choices = parseChoicesCell(cells[choicesCol]);
       }
       const tagCells = tagCols.filter((i) => i < cells.length).map((i) => cells[i]);
       if (tagCells.length) {
@@ -161,6 +214,8 @@ export function parseCardsFile(
       back,
       ...(tags?.length ? { tags } : {}),
       ...(description ? { description } : {}),
+      ...(kind && kind !== "basic" ? { kind } : {}),
+      ...(choices?.length ? { choices } : {}),
     });
   }
 
